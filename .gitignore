@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js
+.next/
+out/
+build/
+
+# Runtime local storage, manga reference chapters (data/manga_refs/), caches & generated assets
+data/
+tmp/
+
+# Environment variables (never commit secrets)
+.env
+.env*.local
+
+# Debug & OS
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+*.tsbuildinfo
+next-env.d.ts
+coverage/
