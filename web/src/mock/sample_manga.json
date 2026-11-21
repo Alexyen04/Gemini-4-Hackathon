@@ -1,0 +1,313 @@
+{
+  "job_id": "demo-comeback",
+  "title": "The Fourth Quarter Storm",
+  "subtitle": "Chapter 01 · One possession at a time",
+  "user_focus": "Follow #23 in the fourth-quarter comeback",
+  "reading_direction": "rtl",
+  "arc_summary": "A pause at the line gives way to a steal, a drive to the rim, and a reaction from the bench.",
+  "pages": [
+    {
+      "page_number": 1,
+      "layout_template": "opening_4panel",
+      "panels": [
+        {
+          "panel_id": "p1_1",
+          "reading_order": 1,
+          "slot": "top_wide",
+          "candidate_id": "seg_01_court",
+          "narrative_role": "setup",
+          "visual_intensity": "quiet",
+          "crop_focus": "full_action",
+          "action_bbox_norm": [
+            0.25,
+            0.18,
+            0.88,
+            0.84
+          ],
+          "narration_box": "Both teams line up at center court.",
+          "caption_quote": null,
+          "sfx": {
+            "text": "",
+            "style": "none"
+          },
+          "effects": {
+            "speed_lines": "none",
+            "impact_burst": false
+          },
+          "assets": {
+            "panel_image_url": "/demo/court-ink.webp",
+            "source_frame_url": "/demo/court.webp"
+          },
+          "provenance": {
+            "timestamp_sec": 1.8,
+            "ink_method": "opencv_deterministic",
+            "edge_iou": 0.96,
+            "decision_fidelity_score": 0.99,
+            "scores": {
+              "action_spectacle": 0.17,
+              "narrative_leverage": 0.52,
+              "user_focus_match": 0.56
+            }
+          }
+        },
+        {
+          "panel_id": "p1_2",
+          "reading_order": 2,
+          "slot": "mid_right",
+          "candidate_id": "seg_01_composure",
+          "narrative_role": "struggle",
+          "visual_intensity": "quiet",
+          "crop_focus": "tight_face",
+          "action_bbox_norm": [
+            0.04,
+            0.29,
+            0.7,
+            0.75
+          ],
+          "narration_box": "No. 23 lowers his head.",
+          "caption_quote": null,
+          "sfx": {
+            "text": "",
+            "style": "none"
+          },
+          "effects": {
+            "speed_lines": "none",
+            "impact_burst": false
+          },
+          "assets": {
+            "panel_image_url": "/demo/composure-ink.webp",
+            "source_frame_url": "/demo/composure.webp"
+          },
+          "provenance": {
+            "timestamp_sec": 39.3,
+            "ink_method": "opencv_deterministic",
+            "edge_iou": 0.97,
+            "decision_fidelity_score": 0.99,
+            "scores": {
+              "action_spectacle": 0.12,
+              "narrative_leverage": 0.79,
+              "user_focus_match": 0.93
+            }
+          }
+        },
+        {
+          "panel_id": "p1_3",
+          "reading_order": 3,
+          "slot": "slant_left",
+          "candidate_id": "seg_01_free-throw",
+          "narrative_role": "tension_pause",
+          "visual_intensity": "quiet",
+          "crop_focus": "full_action",
+          "action_bbox_norm": [
+            0.13,
+            0.28,
+            0.98,
+            0.67
+          ],
+          "narration_box": "At the line, No. 23 steadies the ball.",
+          "caption_quote": {
+            "text": "And number twenty-three steps to the line.",
+            "timestamp_sec": 43.4
+          },
+          "sfx": {
+            "text": "",
+            "style": "none"
+          },
+          "effects": {
+            "speed_lines": "none",
+            "impact_burst": false
+          },
+          "assets": {
+            "panel_image_url": "/demo/free-throw-ink.webp",
+            "source_frame_url": "/demo/free-throw.webp"
+          },
+          "provenance": {
+            "timestamp_sec": 43.8,
+            "ink_method": "opencv_deterministic",
+            "edge_iou": 0.95,
+            "decision_fidelity_score": 0.98,
+            "scores": {
+              "action_spectacle": 0.28,
+              "narrative_leverage": 0.83,
+              "user_focus_match": 0.95
+            }
+          }
+        },
+        {
+          "panel_id": "p1_4",
+          "reading_order": 4,
+          "slot": "bottom_strip",
+          "candidate_id": "seg_01_steal",
+          "narrative_role": "turning_point",
+          "visual_intensity": "explosive",
+          "crop_focus": "full_action",
+          "action_bbox_norm": [
+            0.24,
+            0.27,
+            0.98,
+            0.96
+          ],
+          "narration_box": "No. 23 reaches around the ball handler.",
+          "caption_quote": {
+            "text": "Stripped away!",
+            "timestamp_sec": 78.19999999999999
+          },
+          "sfx": {
+            "text": "SWIPE!",
+            "katakana": "シュッ",
+            "style": "sharp"
+          },
+          "effects": {
+            "speed_lines": "directional",
+            "impact_burst": true
+          },
+          "assets": {
+            "panel_image_url": "/demo/steal-ink.webp",
+            "source_frame_url": "/demo/steal.webp"
+          },
+          "provenance": {
+            "timestamp_sec": 78.6,
+            "ink_method": "opencv_deterministic",
+            "edge_iou": 0.94,
+            "decision_fidelity_score": 0.98,
+            "scores": {
+              "action_spectacle": 0.87,
+              "narrative_leverage": 0.94,
+              "user_focus_match": 0.98
+            }
+          }
+        }
+      ]
+    },
+    {
+      "page_number": 2,
+      "layout_template": "climax_splash_4panel",
+      "panels": [
+        {
+          "panel_id": "p2_1",
+          "reading_order": 5,
+          "slot": "splash_hero",
+          "candidate_id": "seg_01_layup",
+          "narrative_role": "climax",
+          "visual_intensity": "explosive",
+          "crop_focus": "hoop_and_ball",
+          "action_bbox_norm": [
+            0.03,
+            0.01,
+            0.89,
+            0.76
+          ],
+          "narration_box": "No. 23 takes it to the rim.",
+          "caption_quote": {
+            "text": "All the way to the rim!",
+            "timestamp_sec": 92.19999999999999
+          },
+          "sfx": {
+            "text": "UP!",
+            "katakana": "ダン",
+            "style": "heavy"
+          },
+          "effects": {
+            "speed_lines": "radial",
+            "impact_burst": true
+          },
+          "assets": {
+            "panel_image_url": "/demo/layup-ink.webp",
+            "source_frame_url": "/demo/layup.webp"
+          },
+          "provenance": {
+            "timestamp_sec": 92.6,
+            "ink_method": "opencv_deterministic",
+            "edge_iou": 0.96,
+            "decision_fidelity_score": 0.99,
+            "scores": {
+              "action_spectacle": 0.97,
+              "narrative_leverage": 0.98,
+              "user_focus_match": 0.99
+            }
+          }
+        },
+        {
+          "panel_id": "p2_2",
+          "reading_order": 6,
+          "slot": "mid_right",
+          "candidate_id": "seg_01_coach",
+          "narrative_role": "aftermath",
+          "visual_intensity": "quiet",
+          "crop_focus": "bench_reaction",
+          "action_bbox_norm": [
+            0.04,
+            0.17,
+            0.96,
+            0.92
+          ],
+          "narration_box": "The coach leans forward from the bench.",
+          "caption_quote": null,
+          "sfx": {
+            "text": "",
+            "style": "none"
+          },
+          "effects": {
+            "speed_lines": "none",
+            "impact_burst": false
+          },
+          "assets": {
+            "panel_image_url": "/demo/coach-ink.webp",
+            "source_frame_url": "/demo/coach.webp"
+          },
+          "provenance": {
+            "timestamp_sec": 99.4,
+            "ink_method": "opencv_deterministic",
+            "edge_iou": 0.98,
+            "decision_fidelity_score": 0.99,
+            "scores": {
+              "action_spectacle": 0.14,
+              "narrative_leverage": 0.72,
+              "user_focus_match": 0.65
+            }
+          }
+        },
+        {
+          "panel_id": "p2_3",
+          "reading_order": 7,
+          "slot": "mid_left",
+          "candidate_id": "seg_01_celebrate",
+          "narrative_role": "aftermath",
+          "visual_intensity": "medium",
+          "crop_focus": "full_action",
+          "action_bbox_norm": [
+            0.08,
+            0.16,
+            0.97,
+            0.95
+          ],
+          "narration_box": "No. 23 and a teammate bump arms.",
+          "caption_quote": null,
+          "sfx": {
+            "text": "",
+            "style": "none"
+          },
+          "effects": {
+            "speed_lines": "none",
+            "impact_burst": false
+          },
+          "assets": {
+            "panel_image_url": "/demo/celebrate-ink.webp",
+            "source_frame_url": "/demo/celebrate.webp"
+          },
+          "provenance": {
+            "timestamp_sec": 113.2,
+            "ink_method": "opencv_deterministic",
+            "edge_iou": 0.95,
+            "decision_fidelity_score": 0.98,
+            "scores": {
+              "action_spectacle": 0.43,
+              "narrative_leverage": 0.71,
+              "user_focus_match": 0.85
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
