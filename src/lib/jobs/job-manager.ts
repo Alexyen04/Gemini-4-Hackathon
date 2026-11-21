@@ -41,7 +41,7 @@ export class MangaJobManager {
       {
         id: "reference_analysis",
         label: "Stage 0. Manga Visual Reference Analysis",
-        model: tag("hydrogen"),
+        model: tag("carbon"),
         status: "pending",
         detail: "Scanning data/manga_refs/ & checking style profile cache",
         startedAt: null,
@@ -50,7 +50,7 @@ export class MangaJobManager {
       {
         id: "clip_analysis",
         label: "Stage 1. Basketball Clip Understanding",
-        model: tag("hydrogen"),
+        model: tag("argon"),
         status: "pending",
         detail: "Waiting to analyze basketball keyframes",
         startedAt: null,
@@ -68,7 +68,7 @@ export class MangaJobManager {
       {
         id: "narrative_planning",
         label: "Stage 2. Narrative Planning",
-        model: tag("hydrogen"),
+        model: tag("carbon"),
         status: "pending",
         detail: "Waiting to construct 5-act sports manga storyline",
         startedAt: null,
@@ -77,7 +77,7 @@ export class MangaJobManager {
       {
         id: "storyboard_generation",
         label: "Stage 3. Reference-Guided Storyboarding",
-        model: tag("hydrogen"),
+        model: tag("carbon"),
         status: "pending",
         detail: "Waiting to compose pages, beats & camera perspectives",
         startedAt: null,

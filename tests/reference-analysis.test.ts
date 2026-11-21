@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 import zlib from "zlib";
 import sharp from "sharp";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   MangaPreferencesSchema,
   MangaStylePresetSchema,
@@ -19,6 +19,7 @@ import { MangaVisualStyleProfileSchema } from "@/lib/manga/references/style-prof
 import { SampleHighlightGenerator } from "@/lib/video/sample-generator";
 import { DemoPipelineSynthesizer } from "@/lib/ai/demo-fixtures";
 import { MangaImageProcessor } from "@/lib/manga/image-processing";
+import { buildGeminiServingSchema, GeminiClientService } from "@/lib/ai/gemini-client";
 
 function buildSingleFileZipBuffer(entryName: string, fileBytes: Buffer): Buffer {
   const nameBuf = Buffer.from(entryName, "utf-8");
@@ -126,6 +127,53 @@ describe("Stage 0: Manga Visual Reference Analysis & Anime Controls Suite", () =
     if (tempRoot) {
       await fs.rm(tempRoot, { recursive: true, force: true });
     }
+  });
+
+  it("builds a Gemini-safe serving schema while preserving structural types", () => {
+    const servingSchema = buildGeminiServingSchema({
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        score: { type: "number", minimum: 0, maximum: 1 },
+        direction: { type: "string", enum: ["rtl", "ltr"] },
+        title: { type: "string", title: "Display title", minLength: 1 },
+        description: { type: "string", description: "A description" },
+        default: { type: "string", default: "fallback" },
+        beats: {
+          type: "array",
+          minItems: 3,
+          maxItems: 8,
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string", title: "Nested title" },
+            },
+            required: ["title"],
+          },
+        },
+      },
+      required: ["score", "direction", "title", "description", "default", "beats"],
+    });
+
+    expect(servingSchema).toEqual({
+      type: "object",
+      properties: {
+        score: { type: "number" },
+        direction: { type: "string" },
+        title: { type: "string" },
+        description: { type: "string" },
+        default: { type: "string" },
+        beats: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: { title: { type: "string" } },
+            required: ["title"],
+          },
+        },
+      },
+      required: ["score", "direction", "title", "description", "default", "beats"],
+    });
   });
 
   it("1. Handles missing and empty data/manga_refs/ cleanly with nonblocking warning & built-in fallback", async () => {
@@ -341,6 +389,43 @@ describe("Stage 0: Manga Visual Reference Analysis & Anime Controls Suite", () =
     expect(sb.pages[0].panels[0].illustration.prompt).toContain(
       "Reference Guidance (strong)"
     );
+  });
+
+  it("accepts compact real reference observations without fabricating missing profile fields", async () => {
+    const previousKey = process.env.GEMINI_API_KEY;
+    process.env.GEMINI_API_KEY = "test-key-no-network";
+    const generate = vi.spyOn(GeminiClientService, "generateStructuredJson").mockImplementation(
+      async ({ zodSchema }) => ({
+        data: zodSchema.parse({
+          general_style_description: "Observed heavy contours and sparse backgrounds.",
+          confidence: 0.75,
+          character_art_observation: "Distinct silhouettes.",
+          linework_observation: "Heavy outer contours.",
+          basketball_action_observation: "Diagonal movement.",
+          layout_observation: "Asymmetric panels.",
+          pacing_observation: "Setup followed by impact.",
+          anime_visual_observation: "Low camera angle.",
+          analyzed_items: [],
+        }),
+        modelUsed: "gemini-4-carbon",
+      })
+    );
+    try {
+      const outcome = await MangaReferenceAnalyzer.ensureReferenceAnalysis({
+        mode: "real", customReferencesDir: tempRefsDir, forceRefresh: true,
+      });
+      expect(generate).toHaveBeenCalledOnce();
+      expect(generate.mock.calls[0][0].role).toBe("carbon");
+      expect(outcome.profile.is_builtin_fallback).toBe(false);
+      expect(outcome.profile.warning).toContain("Unobserved");
+      expect(outcome.profile.linework_and_shading.g_pen_linework).toBe("Heavy outer contours.");
+      expect(MangaVisualStyleProfileSchema.safeParse(outcome.profile).success).toBe(true);
+      expect(outcome.index.items.length).toBeGreaterThan(0);
+    } finally {
+      generate.mockRestore();
+      if (previousKey === undefined) delete process.env.GEMINI_API_KEY;
+      else process.env.GEMINI_API_KEY = previousKey;
+    }
   });
 
   it("5. Verifies all 3 improved presets & 3 color treatments produce distinct rendered pixel outputs, and no reference uploader UI/API exists", async () => {

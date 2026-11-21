@@ -11,7 +11,6 @@ import {
   buildBuiltinFallbackStyleProfile,
   MangaReferenceIndex,
   MangaVisualStyleProfile,
-  MangaVisualStyleProfileSchema,
   ReferenceIndexedItem,
   ReferenceTagSchema,
 } from "./style-profile";
@@ -26,22 +25,19 @@ import { ReferenceIndexStore } from "./reference-index";
 const CarbonReferenceResponseSchema = z.object({
   general_style_description: z.string(),
   confidence: z.number().min(0).max(1),
-  visual_style: MangaVisualStyleProfileSchema.shape.visual_style,
-  storytelling: MangaVisualStyleProfileSchema.shape.storytelling,
-  character_art: MangaVisualStyleProfileSchema.shape.character_art,
-  linework_and_shading: MangaVisualStyleProfileSchema.shape.linework_and_shading,
-  basketball_action: MangaVisualStyleProfileSchema.shape.basketball_action,
-  manga_layouts: MangaVisualStyleProfileSchema.shape.manga_layouts,
-  narrative_pacing: MangaVisualStyleProfileSchema.shape.narrative_pacing,
-  anime_visual_language:
-    MangaVisualStyleProfileSchema.shape.anime_visual_language,
+  character_art_observation: z.string(),
+  linework_observation: z.string(),
+  basketball_action_observation: z.string(),
+  layout_observation: z.string(),
+  pacing_observation: z.string(),
+  anime_visual_observation: z.string(),
   analyzed_items: z.array(
     z.object({
       item_id: z.string(),
       tags: z.array(ReferenceTagSchema),
-      action_summary: z.string(),
-      composition_takeaway: z.string(),
-      camera_and_lighting_note: z.string(),
+      action_summary: z.string().optional(),
+      composition_takeaway: z.string().optional(),
+      camera_and_lighting_note: z.string().optional(),
     })
   ),
 });
@@ -321,26 +317,25 @@ export class MangaReferenceAnalyzer {
         extractedPanels.length
       } extracted panels).
 
-Extract reusable, generalizable anime and manga artistic principles across all 6 required domains:
-- Analysis A: Character Art (proportions, anime facial structure, eyes, hair, muscle definition, jersey folds, movement poses, emotions, facial shading) without copying specific copyrighted character identities.
-- Analysis B: Linework & Shading (G-pen linework, brush stroke variation, contour thickness, crosshatching, screentones, halftone shading, shadow intensity, B&W contrast, background simplification, texture density + numeric recommendations).
-- Analysis C: Basketball Action (shooting, dunking, dribbling, passing, blocking, defending, sprinting, player_confrontations, crowd_reactions).
-- Analysis D: Manga Layouts (typical_panel_count, panel_dimensions, panel_arrangement, reading_direction, gutter_spacing, borderless_panels, splash_pages, diagonal_panels, visual_hierarchy).
-- Analysis E: Narrative Pacing (beat_sequence_pattern, panel_size_escalation, camera_angle_transitions, suspense_building).
-- Analysis F: Anime Visual Language (exaggerated_expressions, dramatic_foreshortening, dynamic_perspective, speed_lines, impact_bursts, strong_silhouettes, dramatic_shadows, emotional_closeups, cinematic_framing, sound_effect_treatment).
+ Give one concise, evidence-based observation for EACH of the six fields
+ character_art_observation, linework_observation, basketball_action_observation,
+ layout_observation, pacing_observation, anime_visual_observation.
+ Do not copy reference characters or invent details not visible in these images.
 
 Also tag each of the ${
         visualSamples.length
       } provided reference items ("analyzed_items") using ONLY valid tags from:
 ["dunk","jump_shot","dribbling","passing","defensive_block","perimeter_defense","sprint_fastbreak","confrontation","closeup","extreme_closeup","low_angle","high_angle","dutch_angle","determination","shock","triumph","exhaustion","impact_lines","speed_lines","dramatic_splash","suspense","character_reaction"].
 
-Return valid JSON matching CarbonReferenceResponseSchema.`;
+ Return general_style_description, confidence, the six observation fields, and analyzed_items.
+ Each analyzed item needs item_id and tags; its three description fields are optional.
+ Use reading-direction terms rtl or ltr if mentioned.`;
 
       parts.push(prompt);
 
       const { data, modelUsed } =
         await GeminiClientService.generateStructuredJson({
-          role: "hydrogen",
+          role: "carbon",
           systemInstruction,
           contents: parts,
           zodSchema: CarbonReferenceResponseSchema,
@@ -348,7 +343,10 @@ Return valid JSON matching CarbonReferenceResponseSchema.`;
           temperature: 0.25,
         });
 
-      const analyzedMap = new Map(
+       // The compact response contains only observed principles; unobserved
+       // subfields remain explicitly identified as built-in guidance.
+       const baseline = buildBuiltinFallbackStyleProfile(corpus.fingerprintHash, null);
+       const analyzedMap = new Map(
         data.analyzed_items.map((it) => [it.item_id, it])
       );
 
@@ -376,7 +374,7 @@ Return valid JSON matching CarbonReferenceResponseSchema.`;
             data.general_style_description.slice(0, 180),
           camera_and_lighting_note:
             aiItem?.camera_and_lighting_note ||
-            data.anime_visual_language.cinematic_framing,
+             data.anime_visual_observation,
         };
       });
 
@@ -388,17 +386,17 @@ Return valid JSON matching CarbonReferenceResponseSchema.`;
         generated_at: new Date().toISOString(),
         analyzed_by_model: modelUsed,
         is_builtin_fallback: false,
-        warning: null,
+         warning: "Unobserved profile subfields use built-in basketball-manga guidance; only summary fields are reference observations.",
         confidence: data.confidence,
         general_style_description: data.general_style_description,
-        visual_style: data.visual_style,
-        storytelling: data.storytelling,
-        character_art: data.character_art,
-        linework_and_shading: data.linework_and_shading,
-        basketball_action: data.basketball_action,
-        manga_layouts: data.manga_layouts,
-        narrative_pacing: data.narrative_pacing,
-        anime_visual_language: data.anime_visual_language,
+         visual_style: { ...baseline.visual_style, linework: data.linework_observation, camera_style: data.anime_visual_observation },
+         storytelling: { ...baseline.storytelling, action_pacing: data.pacing_observation },
+         character_art: { ...baseline.character_art, proportions: data.character_art_observation },
+         linework_and_shading: { ...baseline.linework_and_shading, g_pen_linework: data.linework_observation },
+         basketball_action: baseline.basketball_action,
+         manga_layouts: { ...baseline.manga_layouts, visual_hierarchy: data.layout_observation },
+         narrative_pacing: { ...baseline.narrative_pacing, panel_size_escalation: data.pacing_observation },
+         anime_visual_language: { ...baseline.anime_visual_language, cinematic_framing: data.anime_visual_observation, dynamic_perspective: data.basketball_action_observation },
         reference_sources: citations,
       };
 
@@ -420,7 +418,7 @@ Return valid JSON matching CarbonReferenceResponseSchema.`;
         chapterCount: corpus.chapterIds.length,
         pageCount: validPages.length,
         panelCount: extractedPanels.length,
-        warning: null,
+         warning: profile.warning,
       };
     }
 
