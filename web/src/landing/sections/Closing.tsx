@@ -38,7 +38,7 @@ export function Closing() {
         }}
         aria-hidden
       />
-      <ChapterTag n="04" inverted />
+      <ChapterTag n="03" inverted />
       <div className="relative my-auto py-16">
         <h2 id="close-h" className="close-h display max-w-[12ch] text-[clamp(60px,17vw,230px)] md:text-[clamp(64px,13vw,230px)]">
           Every play becomes a page.

@@ -40,7 +40,8 @@ const V01: Visual = {
       .from(q(el, '.v-chip'), { scale: 1.3, autoAlpha: 0, duration: 0.25 }, '-=0.1'),
 }
 
-/* 02 Watch (Stage 1, gemini-4-argon): clips + keyframes analyzed in parallel lanes */
+/* 02 Watch (gemini-4-hydrogen ×2): upstream scout and clip analysis run in parallel */
+const LANE_NAMES = ['scout', 'clip read']
 const V02: Visual = {
   View: ({ lanes }) => (
     <div className="flex h-full flex-col justify-center gap-2 px-4 pt-6 pb-3">
@@ -48,12 +49,12 @@ const V02: Visual = {
         <div className="absolute top-1/2 h-[3px] w-full -translate-y-1/2 bg-ink" />
       </div>
       {Array.from({ length: lanes }, (_, i) => {
-        const left = (i * 66) / Math.max(1, lanes - 1)
+        const left = 0 // both analyses read the whole clip at the same time
         return (
           <div key={i} className="flex items-center gap-2">
-            <span className="mono w-14 shrink-0">argon·{String(i + 1).padStart(2, '0')}</span>
+            <span className="mono w-16 shrink-0">{LANE_NAMES[i] ?? `lane·${i + 1}`}</span>
             <div className="relative h-5 flex-1">
-              <div className="v-chunk absolute top-0 h-full border-2 border-ink bg-ink" style={{ left: `${left}%`, width: '34%' }}>
+              <div className="v-chunk absolute top-0 h-full border-2 border-ink bg-ink" style={{ left: `${left}%`, width: '100%' }}>
                 <div className="v-lane-token invisible absolute top-1/2 left-0 h-3 w-3 -translate-y-1/2 border-2 border-paper bg-ink" />
               </div>
             </div>
@@ -71,38 +72,40 @@ const V02: Visual = {
       .to(q(el, '.v-lane-token'), { autoAlpha: 0, scale: 0.4, duration: 0.15 }),
 }
 
-/* 03 Plot (Stage 2, gemini-4-carbon): 5-act sports manga arc draws, beats snap on */
-const BEATS = [
-  { x: 10, y: 80, t: 'intro' },
-  { x: 54, y: 62, t: 'rising' },
-  { x: 100, y: 40, t: 'conflict' },
-  { x: 146, y: 10, t: 'climax' },
-  { x: 192, y: 60, t: 'resolution' },
+/* 03 Rank (gemini-decision-1): candidate beats drop onto the action × story casting grid */
+const DOTS = [
+  { a: 0.84, s: 0.2, tag: 'dunk, up 20', hot: false },
+  { a: 0.26, s: 0.76, tag: 'missed ft', hot: true },
+  { a: 0.72, s: 0.74, tag: '', hot: false },
+  { a: 0.18, s: 0.22, tag: '', hot: false },
+  { a: 0.44, s: 0.58, tag: '', hot: false },
 ]
 const V03: Visual = {
   View: () => (
-    <div className="flex h-full items-center px-6 pt-9 pb-5">
-      <svg viewBox="0 0 204 100" className="h-full w-full overflow-visible" aria-hidden>
-        <path className="v-arc" d="M10 80 C 30 76, 40 66, 54 62 S 84 46, 100 40 S 130 8, 146 10 S 180 44, 192 60" fill="none" stroke="var(--ink)" strokeWidth="3" strokeLinecap="square" />
-        {BEATS.map((b) => (
-          <g key={b.t} className="v-beat">
-            <rect x={b.x - 5} y={b.y - 5} width="10" height="10" fill={b.t === 'climax' ? 'var(--accent)' : 'var(--ink)'} stroke="var(--ink)" strokeWidth="2" />
-            <text x={b.x} y={b.y + 19} textAnchor="middle" fontFamily="var(--font-mono)" fontSize="8.5" fill="var(--ink)">
-              {b.t}
-            </text>
-          </g>
+    <div className="flex h-full items-center gap-2 px-4 pt-10 pb-7">
+      <span className="mono -rotate-90 whitespace-nowrap">story →</span>
+      <div className="relative aspect-square h-full max-h-full border-[3px] border-ink">
+        <div className="absolute top-0 left-1/2 h-full w-[2px] bg-ink" />
+        <div className="absolute top-1/2 left-0 h-[2px] w-full bg-ink" />
+        <span className="mono absolute top-1 left-1">emotion</span>
+        <span className="mono absolute top-1 right-1">climax</span>
+        <span className="mono absolute right-1 bottom-1">montage</span>
+        <span className="mono absolute bottom-1 left-1">drop</span>
+        {DOTS.map((d, i) => (
+          <div key={i} className="v-dot absolute" style={{ left: `${d.a * 100}%`, bottom: `${d.s * 100}%` }}>
+            <div className={`-translate-x-1/2 translate-y-1/2 border-2 border-ink ${d.hot ? 'h-4 w-4 bg-accent' : 'h-3 w-3 bg-ink'}`} />
+            {d.tag && <span className={`mono absolute top-1 whitespace-nowrap bg-paper px-1 ${d.a > 0.6 ? 'right-2' : 'left-2'}`}>{d.tag}</span>}
+          </div>
         ))}
-      </svg>
+        <span className="mono absolute -bottom-5 left-0 w-full text-center">action →</span>
+      </div>
     </div>
   ),
   anim: (el) =>
-    gsap
-      .timeline({ defaults: { ease: INK } })
-      .from(q(el, '.v-arc'), { drawSVG: '0%', duration: 0.6 })
-      .from(q(el, '.v-beat'), { scale: 0, transformOrigin: '50% 50%', autoAlpha: 0, stagger: 0.1, duration: 0.2 }, '<0.1'),
+    gsap.timeline({ defaults: { ease: INK } }).from(q(el, '.v-dot'), { y: -80, autoAlpha: 0, stagger: 0.08, duration: 0.35 }),
 }
 
-/* 04 Storyboard (Stage 3, gemini-4-carbon): beats become panels with camera shots */
+/* 04 Storyboard (gemini-4-hydrogen): 5-act arc → pages, panels and camera shots */
 const SHOTS = [
   { area: 'col-span-2', shot: 'wide · intro' },
   { area: '', shot: 'low angle' },
@@ -125,7 +128,7 @@ const V04: Visual = {
     gsap.timeline({ defaults: { ease: INK } }).from(q(el, '.v-cell'), { clipPath: 'inset(0 100% 0 0)', stagger: 0.12, duration: 0.3 }),
 }
 
-/* 05 Illustrate + Check (Stages 4 & 6): carbon draws, hydrogen checks facts and quality */
+/* 05 Illustrate + Check: carbon panel specs → nano-banana redraws the real frame → hydrogen fact check */
 const CHECKS = ['same play', 'same score', 'same players']
 const V05: Visual = {
   View: () => (

@@ -142,7 +142,7 @@ export const GenerationProgress: React.FC = () => {
             <button
               type="button"
               onClick={() => void startGeneration(activeJob.jobId)}
-              className="inline-flex items-center gap-2 bg-crimson-500 text-white font-mono text-xs font-bold uppercase px-4 py-2.5 border-2 border-ink-950"
+              className="inline-flex items-center gap-2 bg-crimson-500 text-ink-950 font-mono text-xs font-bold uppercase px-4 py-2.5 border-2 border-ink-950"
             >
               <RotateCcw className="w-4 h-4" />
               Resume From Checkpoint

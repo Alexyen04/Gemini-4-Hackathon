@@ -47,7 +47,7 @@ export const MangaPanel: React.FC<MangaPanelProps> = ({
     panel.borderStyle === "borderless_bleed"
       ? "border-0 shadow-none"
       : panel.borderStyle === "heavy_impact"
-      ? "border-[4px] border-ink-950 shadow-[4px_4px_0px_#09090b]"
+      ? "border-[4px] border-ink-950 shadow-[4px_4px_0px_#16130F]"
       : "border-[3px] border-ink-950";
 
   // Position caption on the initiating side of the reading direction
@@ -112,7 +112,7 @@ export const MangaPanel: React.FC<MangaPanelProps> = ({
       {/* Editable Separate Narration Box */}
       {panel.caption && (
         <div
-          className={`absolute ${captionSideClass} z-10 max-w-[78%] bg-paper-50/95 border-2 border-ink-950 px-2.5 py-1 shadow-[2px_2px_0px_#09090b] pointer-events-none`}
+          className={`absolute ${captionSideClass} z-10 max-w-[78%] bg-paper-50/95 border-2 border-ink-950 px-2.5 py-1 shadow-[2px_2px_0px_#16130F] pointer-events-none`}
         >
           <p className="text-[11px] sm:text-xs font-bold leading-snug text-ink-950 tracking-tight">
             {panel.caption}
@@ -164,7 +164,7 @@ export const MangaPanel: React.FC<MangaPanelProps> = ({
         return (
           <div
             key={dlg.id}
-            className={`absolute ${posClass} z-10 max-w-[65%] rounded-[50%] bg-paper-50 border-2 border-ink-950 px-3 py-2 shadow-[2px_2px_0px_#09090b] pointer-events-none`}
+            className={`absolute ${posClass} z-10 max-w-[65%] rounded-[50%] bg-paper-50 border-2 border-ink-950 px-3 py-2 shadow-[2px_2px_0px_#16130F] pointer-events-none`}
           >
             <p className="text-[11px] font-bold text-ink-950 leading-tight text-center">
               {dlg.text}

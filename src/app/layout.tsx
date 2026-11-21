@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "COURT & INK — Gemini 4 Basketball Manga Studio",
+  title: "Dunkoma Studio",
   description:
-    "Transform real NBA & basketball highlight clips into cohesive, interactive Japanese sports manga powered by Gemini 4 Carbon, Argon, Hydrogen & Neon.",
+    "Basketball footage in, storyline manga out. Real plays, reimagined panels.",
 };
 
 export default function RootLayout({
@@ -21,12 +21,17 @@ export default function RootLayout({
           href="https://fonts.gstatic.com"
           crossOrigin="anonymous"
         />
+        <link rel="preconnect" href="https://api.fontshare.com" />
         <link
           rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Anton&family=Bangers&family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+          href="https://api.fontshare.com/v2/css?f[]=tanker@400&f[]=general-sans@400,500,600&display=swap"
+        />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Geist+Mono:wght@400;500;600&display=swap"
         />
       </head>
-      <body className="font-sans antialiased bg-paper-100 text-ink-950 min-h-screen selection:bg-crimson-500 selection:text-white">
+      <body className="font-sans antialiased bg-paper-100 text-ink-950 min-h-screen ">
         {children}
       </body>
     </html>

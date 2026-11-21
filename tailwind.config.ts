@@ -1,5 +1,11 @@
 import type { Config } from "tailwindcss";
 
+// Dunkoma "Court Orange" palette, shared with the landing page (web/src/styles/tokens.css).
+const PAPER = "#F4EEE2";
+const INK = "#16130F";
+const TONE = "#A39E93";
+const ACCENT = "#FF5A1F";
+
 const config: Config = {
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
@@ -7,42 +13,32 @@ const config: Config = {
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
+    // sharp corners only
+    borderRadius: { none: "0", sm: "0", DEFAULT: "0", md: "0", lg: "0", xl: "0", "2xl": "0", "3xl": "0", full: "9999px" },
     extend: {
       colors: {
-        ink: {
-          950: "#070709",
-          900: "#0d0d11",
-          800: "#17171e",
-          700: "#262631",
-          600: "#3c3c4c",
-        },
-        paper: {
-          50: "#fcfbf7",
-          100: "#f6f3ea",
-          200: "#ebe5d5",
-          300: "#d9cfb8",
-        },
-        crimson: {
-          500: "#e11d48",
-          600: "#be123c",
-        },
-        court: {
-          500: "#ea580c",
-          400: "#fb923c",
-        },
+        ink: { 950: INK, 900: INK, 800: "#2A2620", 700: "#4A453D", 600: "#6E685E" },
+        paper: { 50: PAPER, 100: PAPER, 200: "#E8E0D0", 300: TONE },
+        tone: TONE,
+        // legacy accent names → the one accent
+        crimson: { 500: ACCENT, 600: ACCENT },
+        court: { 500: ACCENT, 400: ACCENT },
+        amber: { 300: ACCENT },
+        emerald: { 300: PAPER, 600: INK, 700: INK, 950: INK },
+        white: PAPER,
       },
       fontFamily: {
         display: ["var(--font-display)", "Impact", "sans-serif"],
-        sfx: ["var(--font-sfx)", "Impact", "sans-serif"],
+        sfx: ["var(--font-display)", "Impact", "sans-serif"],
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],
         mono: ["var(--font-mono)", "monospace"],
       },
       boxShadow: {
-        manga: "5px 5px 0px 0px #09090b",
-        "manga-sm": "3px 3px 0px 0px #09090b",
-        "manga-lg": "8px 8px 0px 0px #09090b",
-        "manga-light": "5px 5px 0px 0px #f6f3ea",
-        "manga-crimson": "5px 5px 0px 0px #e11d48",
+        manga: `4px 4px 0 0 ${INK}`,
+        "manga-sm": `3px 3px 0 0 ${INK}`,
+        "manga-lg": `8px 8px 0 0 ${INK}`,
+        "manga-light": `4px 4px 0 0 ${PAPER}`,
+        "manga-crimson": `4px 4px 0 0 ${ACCENT}`,
       },
     },
   },

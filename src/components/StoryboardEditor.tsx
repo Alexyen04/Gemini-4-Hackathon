@@ -63,7 +63,7 @@ export const StoryboardEditor: React.FC = () => {
   const [effects, setEffects] = useState<string[]>([]);
   const [rendererMode, setRendererMode] = useState<RendererMode>("hybrid");
   const [overrideStyle, setOverrideStyle] = useState<MangaStylePreset>(
-    "hyperkinetic_shonen_anime"
+    "authentic_sports_manga"
   );
   const [overrideColor, setOverrideColor] = useState<ColorTreatment>(
     "traditional_monochrome"
@@ -299,7 +299,7 @@ export const StoryboardEditor: React.FC = () => {
             <button
               type="button"
               onClick={() => setActiveScreen("reader")}
-              className="inline-flex items-center gap-2 bg-crimson-500 text-white font-display uppercase tracking-wider px-4 py-2.5 border-2 border-ink-950 shadow-manga-sm hover:bg-crimson-600"
+              className="inline-flex items-center gap-2 bg-crimson-500 text-ink-950 font-display uppercase tracking-wider px-4 py-2.5 border-2 border-ink-950 shadow-manga-sm hover:bg-crimson-600"
             >
               <BookOpen className="w-4 h-4" />
               Open Full Reader
@@ -387,18 +387,6 @@ export const StoryboardEditor: React.FC = () => {
                     </option>
                   ))}
                 </select>
-
-                <select
-                  disabled={isUpdatingLayout}
-                  value={currentProject.storyboard.readingDirection}
-                  onChange={(e) =>
-                    void handleDirectionSwitch(e.target.value as "rtl" | "ltr")
-                  }
-                  className="border-2 border-ink-950 bg-paper-100 px-2 py-1.5 font-mono text-xs font-bold"
-                >
-                  <option value="rtl">RTL ◀</option>
-                  <option value="ltr">LTR ▶</option>
-                </select>
               </div>
             )}
           </div>
@@ -471,13 +459,13 @@ export const StoryboardEditor: React.FC = () => {
                   </div>
                   <div>
                     <label className="block font-mono text-[11px] font-bold uppercase mb-1">
-                      JP Katakana Sub-SFX
+                      Secondary SFX (Optional)
                     </label>
                     <input
                       type="text"
                       value={sfxSubtext}
                       onChange={(e) => setSfxSubtext(e.target.value)}
-                      placeholder="ドゴォン!!"
+                      placeholder="Optional sub-SFX"
                       className="w-full border-2 border-ink-950 bg-paper-100 px-2.5 py-1.5 text-xs"
                     />
                   </div>
@@ -684,7 +672,7 @@ export const StoryboardEditor: React.FC = () => {
                   type="button"
                   disabled={isRegenerating}
                   onClick={() => void handleRegenerateSinglePanel()}
-                  className="w-full bg-crimson-500 text-white font-display uppercase tracking-wider py-2.5 border-2 border-ink-950 shadow-manga-sm hover:bg-crimson-600 flex items-center justify-center gap-2 disabled:opacity-60"
+                  className="w-full bg-crimson-500 text-ink-950 font-display uppercase tracking-wider py-2.5 border-2 border-ink-950 shadow-manga-sm hover:bg-crimson-600 flex items-center justify-center gap-2 disabled:opacity-60"
                 >
                   {isRegenerating ? (
                     <Loader2 className="w-4 h-4 animate-spin" />

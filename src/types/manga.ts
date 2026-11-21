@@ -29,7 +29,7 @@ export const CANONICAL_MANGA_STYLES = [
 export type MangaStylePreset = (typeof CANONICAL_MANGA_STYLES)[number];
 
 /**
- * Supports the three improved anime/manga presets (with hyperkinetic_shonen_anime
+ * Supports the three anime/manga presets (with authentic_sports_manga
  * as the default) while seamlessly upgrading any previously persisted stories.
  */
 export const MangaStylePresetSchema = z.preprocess((val) => {
@@ -153,13 +153,13 @@ export const BubblePlacementSchema = z.enum([
 export type BubblePlacement = z.infer<typeof BubblePlacementSchema>;
 
 export const MangaPreferencesSchema = z.object({
-  style: MangaStylePresetSchema.default("hyperkinetic_shonen_anime"),
+  style: MangaStylePresetSchema.default("authentic_sports_manga"),
   colorTreatment: ColorTreatmentSchema.default("traditional_monochrome"),
   actionIntensity: ActionIntensitySchema.default("dramatic"),
   referenceInfluence: ReferenceInfluenceSchema.default("balanced"),
   storytellingFocus: StorytellingFocusSchema.default("balanced"),
-  targetPages: z.number().int().min(1).max(8).default(2), // short clips (secs–1 min) read best as 2 pages
-  readingDirection: ReadingDirectionSchema.default("rtl"),
+  targetPages: z.number().int().min(1).max(8).default(3),
+  readingDirection: ReadingDirectionSchema.default("ltr"),
   storyFocus: z
     .enum([
       "team_comeback",
@@ -173,8 +173,35 @@ export const MangaPreferencesSchema = z.object({
   visualEffectsIntensity: z.number().min(1).max(10).default(8),
   useLayoutOptimizerNeon: z.boolean().default(false),
   directorNotes: z.string().max(1000).optional().default(""),
+  userPrompt: z.string().max(1500).optional(),
 });
 export type MangaPreferences = z.infer<typeof MangaPreferencesSchema>;
+
+export const CachedHandoffSummarySchema = z.object({
+  jobId: z.string(),
+  handoffPath: z.string(),
+  userFocus: z.string(),
+  selectedPoolCount: z.number().int().nonnegative(),
+  attachedReplayCount: z.number().int().nonnegative().default(0),
+  updatedAt: z.string(),
+});
+export type CachedHandoffSummary = z.infer<typeof CachedHandoffSummarySchema>;
+
+export const RawVideoRecordSchema = z.object({
+  videoId: z.string(),
+  fileName: z.string(),
+  title: z.string(),
+  filePath: z.string(),
+  mediaUrl: z.string(),
+  durationSec: z.number().positive(),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  fps: z.number().positive(),
+  sizeBytes: z.number().nonnegative(),
+  cachedHandoffs: z.array(CachedHandoffSummarySchema).default([]),
+  createdAt: z.string(),
+});
+export type RawVideoRecord = z.infer<typeof RawVideoRecordSchema>;
 
 // ============================================================================
 // 3. Stage 1: Video Clips & Keyframe Schemas
@@ -544,6 +571,7 @@ export type QualityReviewReport = z.infer<typeof QualityReviewReportSchema>;
 // ============================================================================
 
 export const PipelineStageIdSchema = z.enum([
+  "video_ingest",
   "reference_analysis",
   "clip_analysis",
   "character_references",

@@ -19,6 +19,7 @@ import {
 import { StorageService } from "@/lib/storage/storage-service";
 import {
   hasConfiguredApiKey,
+  mapWithConcurrency,
   resolveRoleModel,
 } from "@/lib/ai/gemini-client";
 import { ClipUnderstandingAgent } from "@/lib/ai/clip-understanding";
@@ -26,23 +27,51 @@ import { MangaDirectorAgent } from "@/lib/ai/manga-director";
 import { CarbonIllustrationAgent } from "@/lib/ai/carbon-illustrator";
 import { MangaQualityReviewer } from "@/lib/ai/quality-reviewer";
 import { DemoPipelineSynthesizer } from "@/lib/ai/demo-fixtures";
-import { runIngestForClips, ingestPromptBlock, type IngestResult } from "@/lib/pipeline/ingest-bridge";
 import { CharacterReferenceService } from "@/lib/manga/character-references";
 import { HybridMangaRenderer } from "@/lib/manga/hybrid-renderer";
 import { PageCompositionService } from "@/lib/manga/layout-engine";
 import { MangaReferenceAnalyzer } from "@/lib/manga/references/reference-analyzer";
 import { ReferenceIndexStore } from "@/lib/manga/references/reference-index";
+import { PythonIngestBridge } from "@/lib/ingest/python-ingest-bridge";
+
+export interface RawVideoIngestRequest {
+  rawVideoPath: string;
+  userPrompt: string;
+  reuseIngestCache?: boolean;
+  cachedHandoffPath?: string;
+}
 
 export class MangaJobManager {
-  static createInitialStages(mode: PipelineMode): PipelineStageStatus[] {
+  static createInitialStages(
+    mode: PipelineMode,
+    includeVideoIngest = false
+  ): PipelineStageStatus[] {
     const tag = (role: "argon" | "carbon" | "hydrogen" | "neon") =>
       mode === "real" ? resolveRoleModel(role) : "demo-deterministic";
 
+    const ingestStages: PipelineStageStatus[] = includeVideoIngest
+      ? [
+          {
+            id: "video_ingest",
+            label: "Stage 0A. Full-Game Video Scouting, Decisions Ranking & Replay Pairing",
+            model:
+              mode === "real"
+                ? "gemini-4-hydrogen + gemini-decision-1"
+                : "python-handoff",
+            status: "pending",
+            detail: "Waiting to scout raw basketball video & pair zoomed replay angles",
+            startedAt: null,
+            completedAt: null,
+          },
+        ]
+      : [];
+
     return [
+      ...ingestStages,
       {
         id: "reference_analysis",
         label: "Stage 0. Manga Visual Reference Analysis",
-        model: tag("hydrogen"),
+        model: tag("carbon"),
         status: "pending",
         detail: "Scanning data/manga_refs/ & checking style profile cache",
         startedAt: null,
@@ -51,7 +80,7 @@ export class MangaJobManager {
       {
         id: "clip_analysis",
         label: "Stage 1. Basketball Clip Understanding",
-        model: tag("hydrogen"),
+        model: tag("argon"),
         status: "pending",
         detail: "Waiting to analyze basketball keyframes",
         startedAt: null,
@@ -69,7 +98,7 @@ export class MangaJobManager {
       {
         id: "narrative_planning",
         label: "Stage 2. Narrative Planning",
-        model: tag("hydrogen"),
+        model: tag("neon"),
         status: "pending",
         detail: "Waiting to construct 5-act sports manga storyline",
         startedAt: null,
@@ -78,7 +107,7 @@ export class MangaJobManager {
       {
         id: "storyboard_generation",
         label: "Stage 3. Reference-Guided Storyboarding",
-        model: tag("hydrogen"),
+        model: tag("carbon"),
         status: "pending",
         detail: "Waiting to compose pages, beats & camera perspectives",
         startedAt: null,
@@ -86,10 +115,16 @@ export class MangaJobManager {
       },
       {
         id: "carbon_illustration",
-        label: "Stage 4. Carbon Concurrent Panel Illustration",
-        model: tag("carbon"),
+        label: "Stage 4. Carbon + Nano Banana Panel Illustration",
+        model:
+          mode === "real" && process.env.MANGA_DISABLE_NANO_BANANA !== "true"
+            ? `${tag("carbon")} + gemini-nano-banana-2.1`
+            : tag("carbon"),
         status: "pending",
-        detail: "Waiting to generate all pages concurrently via Gemini 4 Carbon",
+        detail:
+          mode === "real" && process.env.MANGA_DISABLE_NANO_BANANA !== "true"
+            ? "Waiting to direct specs via Carbon & illustrate panels via Nano Banana 2.1"
+            : "Waiting to generate all pages concurrently via Gemini 4 Carbon",
         startedAt: null,
         completedAt: null,
       },
@@ -150,12 +185,25 @@ export class MangaJobManager {
   }
 
   static async startGenerationJob(params: {
-    clipIds: string[];
+    rawVideoPath?: string;
+    userPrompt?: string;
+    reuseIngestCache?: boolean;
+    cachedHandoffPath?: string;
+    clipIds?: string[];
     preferences: MangaPreferences;
     mode: PipelineMode;
     resumeJobId?: string;
   }): Promise<GenerationJob> {
-    const { clipIds, preferences, mode, resumeJobId } = params;
+    const {
+      rawVideoPath,
+      userPrompt = "",
+      reuseIngestCache = true,
+      cachedHandoffPath,
+      clipIds = [],
+      preferences,
+      mode,
+      resumeJobId,
+    } = params;
 
     if (mode === "real" && !hasConfiguredApiKey()) {
       throw new Error(
@@ -163,15 +211,29 @@ export class MangaJobManager {
       );
     }
 
+    let rawIngestReq: RawVideoIngestRequest | undefined;
     const clips: NormalizedClip[] = [];
-    for (const id of clipIds) {
-      const c = await StorageService.getClip(id);
-      if (c) clips.push(c);
-    }
-    if (clips.length === 0) {
-      throw new Error(
-        "At least one valid basketball highlight clip is required."
+
+    if (rawVideoPath) {
+      const validatedPath = await PythonIngestBridge.validateRawVideoPath(
+        rawVideoPath
       );
+      rawIngestReq = {
+        rawVideoPath: validatedPath,
+        userPrompt,
+        reuseIngestCache,
+        cachedHandoffPath,
+      };
+    } else {
+      for (const id of clipIds) {
+        const c = await StorageService.getClip(id);
+        if (c) clips.push(c);
+      }
+      if (clips.length === 0) {
+        throw new Error(
+          "Provide a raw basketball video or at least one valid highlight clip."
+        );
+      }
     }
 
     let job: GenerationJob;
@@ -190,14 +252,15 @@ export class MangaJobManager {
         .randomBytes(3)
         .toString("hex")}`;
       const now = new Date().toISOString();
+      const useVideoIngest = Boolean(rawIngestReq);
 
       job = await StorageService.saveJob({
         jobId,
         storyId,
         mode,
         status: "running",
-        currentStage: "reference_analysis",
-        stages: this.createInitialStages(mode),
+        currentStage: useVideoIngest ? "video_ingest" : "reference_analysis",
+        stages: this.createInitialStages(mode, useVideoIngest),
         completedPanels: 0,
         totalPanels: 0,
         livePanelPreviews: [],
@@ -207,25 +270,81 @@ export class MangaJobManager {
       });
     }
 
-    void this.executePipeline(job, clips, preferences).catch(async (err) => {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      job.status = "failed";
-      job.error = errMsg;
-      await this.updateStage(job, job.currentStage, {
-        status: "failed",
-        detail: errMsg,
-      });
-    });
+    void this.executePipeline(job, clips, preferences, rawIngestReq).catch(
+      async (err) => {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        job.status = "failed";
+        job.error = errMsg;
+        await this.updateStage(job, job.currentStage, {
+          status: "failed",
+          detail: errMsg,
+        });
+      }
+    );
 
     return job;
   }
 
   static async executePipeline(
     job: GenerationJob,
-    clips: NormalizedClip[],
-    preferences: MangaPreferences
+    initialClips: NormalizedClip[],
+    preferences: MangaPreferences,
+    rawIngestReq?: RawVideoIngestRequest
   ): Promise<MangaStoryProject> {
     const isReal = job.mode === "real";
+    let clips = initialClips;
+    let upstreamHandoffContext: string | undefined;
+
+    // ---- Stage 0A (Optional): Python Raw Video Ingest -> Handoff Bridge ----
+    if (rawIngestReq) {
+      job = await this.updateStage(job, "video_ingest", {
+        status: "running",
+        detail: "Starting Python Gemini 4 + Decisions API video ingest & ranking...",
+      });
+
+      const { handoff, cacheHit } = await PythonIngestBridge.runOrLoadPythonHandoff({
+        rawVideoPath: rawIngestReq.rawVideoPath,
+        userPrompt: rawIngestReq.userPrompt,
+        targetPages: preferences.targetPages,
+        mode: job.mode,
+        reuseCache: rawIngestReq.reuseIngestCache,
+        cachedHandoffPath: rawIngestReq.cachedHandoffPath,
+        onProgress: async (detailLine) => {
+          job = await this.updateStage(job, "video_ingest", {
+            status: "running",
+            detail: detailLine,
+          });
+        },
+      });
+
+      const converted = await PythonIngestBridge.convertHandoffToMangaInputs({
+        handoff,
+        targetPages: preferences.targetPages,
+      });
+
+      clips = converted.clips;
+      upstreamHandoffContext = converted.upstreamHandoffContext;
+
+      if (clips.length === 0) {
+        throw new Error(
+          "Upstream Python ingest completed, but no playable candidate clips were staged."
+        );
+      }
+
+      // Pre-populate Stage 1 checkpoint with verified Decisions-API beat analyses
+      await StorageService.saveCheckpoint(
+        job.jobId,
+        "clip_analysis",
+        converted.analyses
+      );
+
+      job = await this.updateStage(job, "video_ingest", {
+        status: "completed",
+        detail: `${cacheHit ? "Loaded cached handoff" : "Scouted & ranked video"} → staged ${
+          clips.length
+        } live & zoomed-replay clips`,
+      });
+    }
 
     // Ensure job stages include `reference_analysis` if caller constructed minimal stages
     if (!job.stages.some((s) => s.id === "reference_analysis")) {
@@ -243,15 +362,31 @@ export class MangaJobManager {
       ];
     }
 
-    // ---- Stage 0: Manga Visual Reference Analysis (Gemini 4 Carbon + SHA-256 Cache) ----
+    // ---- Stage 0 & Stage 1 in Parallel (Reference Analysis + Clip Understanding) ----
     job = await this.updateStage(job, "reference_analysis", {
       status: "running",
       detail: "Scanning data/manga_refs/ for reference chapters & cached style profile...",
     });
-
-    const refOutcome = await MangaReferenceAnalyzer.ensureReferenceAnalysis({
-      mode: job.mode,
+    job = await this.updateStage(job, "clip_analysis", {
+      status: "running",
+      detail: `Analyzing ${clips.length} basketball clip(s) and keyframes...`,
     });
+
+    const [refOutcome, loadedOrAnalyzed] = await Promise.all([
+      MangaReferenceAnalyzer.ensureReferenceAnalysis({ mode: job.mode }),
+      (async () => {
+        const cached = await StorageService.loadCheckpoint<ClipEventAnalysis[]>(
+          job.jobId,
+          "clip_analysis"
+        );
+        if (cached) return cached;
+        const fresh = isReal
+          ? await ClipUnderstandingAgent.analyzeClips(clips)
+          : DemoPipelineSynthesizer.buildDemoClipAnalyses(clips);
+        await StorageService.saveCheckpoint(job.jobId, "clip_analysis", fresh);
+        return fresh;
+      })(),
+    ]);
 
     if (refOutcome.warning) {
       console.warn(`[Stage 0 Reference Analysis] ${refOutcome.warning}`);
@@ -273,41 +408,11 @@ export class MangaJobManager {
     });
 
     const { profile: styleProfile, index: referenceIndex } = refOutcome;
-
-    // ---- Stage 1: Basketball Clip Understanding (Gemini 4 Argon) ----
-    job = await this.updateStage(job, "clip_analysis", {
-      status: "running",
-      detail: `Analyzing ${clips.length} basketball clip(s) and keyframes...`,
-    });
-
-    let analyses = await StorageService.loadCheckpoint<ClipEventAnalysis[]>(
-      job.jobId,
-      "clip_analysis"
-    );
-    // Python upstream (plan → scout → gemini-decision-1 rank) runs alongside clip understanding.
-    let ingest = await StorageService.loadCheckpoint<IngestResult[]>(job.jobId, "ingest_ranking");
-    if (!analyses || !ingest) {
-      const [a, i] = await Promise.all([
-        analyses
-          ? Promise.resolve(analyses)
-          : isReal
-          ? ClipUnderstandingAgent.analyzeClips(clips)
-          : Promise.resolve(DemoPipelineSynthesizer.buildDemoClipAnalyses(clips)),
-        ingest ? Promise.resolve(ingest) : isReal ? runIngestForClips(clips, preferences, job.jobId) : Promise.resolve([]),
-      ]);
-      analyses = a;
-      ingest = i;
-      await StorageService.saveCheckpoint(job.jobId, "clip_analysis", analyses);
-      await StorageService.saveCheckpoint(job.jobId, "ingest_ranking", ingest);
-    }
-    const ingestContext = ingestPromptBlock(ingest);
-    const rankedBeats = ingest.reduce((n, r) => n + r.beatCount, 0);
+    const analyses = loadedOrAnalyzed;
 
     job = await this.updateStage(job, "clip_analysis", {
       status: "completed",
-      detail: `Extracted ${analyses.length} verified basketball event records${
-        isReal ? (rankedBeats ? ` · ${rankedBeats} beats ranked by gemini-decision-1` : " · upstream ranking unavailable") : ""
-      }`,
+      detail: `Extracted ${analyses.length} verified basketball event records`,
     });
 
     // ---- Stage 1B: Character & Uniform Consistency Locking ----
@@ -355,7 +460,7 @@ export class MangaJobManager {
             characters,
             preferences,
             styleProfile,
-            ingestContext,
+            upstreamHandoffContext,
           })
         : DemoPipelineSynthesizer.buildDemoNarrative(
             clips,
@@ -398,7 +503,7 @@ export class MangaJobManager {
             preferences,
             styleProfile,
             referenceIndex,
-            ingestContext,
+            upstreamHandoffContext,
           })
         : DemoPipelineSynthesizer.buildDemoStoryboard({
             storyId: job.storyId,
@@ -426,21 +531,32 @@ export class MangaJobManager {
       detail: `Composed ${storyboard.pages.length} pages (${flatPanels.length} panels)`,
     });
 
-    // ---- Stage 4: Single-Wave Concurrent Per-Page Carbon Illustration Engine ----
+    // ---- Stage 4: Single-Wave Concurrent Per-Page Carbon + Nano Banana 2.1 Illustration Engine ----
+    const useNanoBanana =
+      isReal && process.env.MANGA_DISABLE_NANO_BANANA !== "true";
     job = await this.updateStage(job, "carbon_illustration", {
       status: "running",
-      detail: `Generating all ${storyboard.pages.length} pages (${flatPanels.length} panels) concurrently in 1 wave...`,
+      detail: useNanoBanana
+        ? `Illustrating ${storyboard.pages.length} pages (${flatPanels.length} panels) via Carbon + Nano Banana 2.1...`
+        : `Generating all ${storyboard.pages.length} pages (${flatPanels.length} panels) concurrently in 1 wave...`,
     });
 
     const clipMap = new Map(clips.map((c) => [c.clipId, c]));
     const analysisMap = new Map(analyses.map((a) => [a.clipId, a]));
     const renderedPanelsMap = new Map<string, MangaPanel>();
 
-    // Fire ALL pages concurrently via Promise.all:
-    // Each page runs 1 batched Carbon API call for all its panels, then renders all its PNGs in parallel!
-    await Promise.all(
+    // Wave 1: Build per-page illustration specs.
+    // Fast-path: When Nano Banana 2.1 is active, Stage 3 (Carbon) already wrote rich
+    // panel direction & camera shots, and Nano Banana 2.1 sees the keyframe directly—
+    // skipping the redundant Stage 4 Carbon vision roundtrip cuts ~35-50s of latency!
+    // (Set MANGA_ENABLE_CARBON_SPEC_PASS=true to force the extra Carbon spec LLM pass.)
+    const runCarbonSpecPass =
+      isReal &&
+      (!useNanoBanana || process.env.MANGA_ENABLE_CARBON_SPEC_PASS === "true");
+
+    const pageSpecMaps = await Promise.all(
       storyboard.pages.map(async (page, pageIdx) => {
-        const pageSpecMap = isReal
+        const specMap = runCarbonSpecPass
           ? await CarbonIllustrationAgent.generatePageIllustrationSpecsBatch({
               page,
               clipMap,
@@ -464,61 +580,76 @@ export class MangaJobManager {
                 }),
               ])
             );
-
-        // Render every panel on this page concurrently on local CPU
-        await Promise.all(
-          page.panels.map(async (panel) => {
-            const clip = clipMap.get(panel.sourceClipId) || clips[0];
-            const spec = pageSpecMap.get(panel.panelId)!;
-
-            const rendered = await HybridMangaRenderer.renderPanelArtwork({
-              storyId: job.storyId,
-              panel,
-              clip,
-              style: storyboard!.style,
-              spec,
-              colorTreatment: preferences.colorTreatment,
-              actionIntensity: preferences.actionIntensity,
-              useNanoBanana: isReal,
-            });
-
-            const updatedPanel: MangaPanel = {
-              ...panel,
-              illustration: {
-                ...panel.illustration,
-                renderer: spec.renderer,
-                style: storyboard!.style,
-                colorTreatment: preferences.colorTreatment,
-                referenceFrameIds: [rendered.referenceFrameId],
-                prompt: spec.artisticPrompt,
-                spec,
-                assetUrl: rendered.assetUrl,
-                assetFilePath: rendered.assetFilePath,
-                svgOverlayUrl: rendered.svgOverlayUrl,
-                generationCount: 1,
-              },
-            };
-
-            renderedPanelsMap.set(panel.panelId, updatedPanel);
-            job.completedPanels = renderedPanelsMap.size;
-            job.livePanelPreviews = [
-              ...job.livePanelPreviews,
-              {
-                panelId: panel.panelId,
-                pageNumber: page.pageNumber,
-                assetUrl: rendered.assetUrl,
-                caption: panel.caption,
-              },
-            ];
-          })
-        );
-
-        job = await this.updateStage(job, "carbon_illustration", {
-          status: "running",
-          detail: `Rendered ${renderedPanelsMap.size}/${flatPanels.length} panels (Page ${page.pageNumber} done)`,
-        });
+        return { page, specMap };
       })
     );
+
+    // Wave 2: Render all panels across pages with bounded concurrency (avoids 429 stalls)
+    const allRenderTasks = pageSpecMaps.flatMap(({ page, specMap }) =>
+      page.panels.map((panel) => ({
+        pageNumber: page.pageNumber,
+        panel,
+        spec: specMap.get(panel.panelId)!,
+      }))
+    );
+    const imageConcurrency = Number(
+      process.env.MANGA_IMAGE_CONCURRENCY || (useNanoBanana ? 8 : 8)
+    );
+    let stageWriteChain = Promise.resolve();
+
+    await mapWithConcurrency(allRenderTasks, imageConcurrency, async (task) => {
+      const { pageNumber, panel, spec } = task;
+      const clip = clipMap.get(panel.sourceClipId) || clips[0];
+
+      const rendered = await HybridMangaRenderer.renderPanelArtwork({
+        storyId: job.storyId,
+        panel,
+        clip,
+        style: storyboard!.style,
+        spec,
+        colorTreatment: preferences.colorTreatment,
+        actionIntensity: preferences.actionIntensity,
+        useNanoBanana,
+        characters: characters!,
+      });
+
+      const updatedPanel: MangaPanel = {
+        ...panel,
+        illustration: {
+          ...panel.illustration,
+          renderer: spec.renderer,
+          style: storyboard!.style,
+          colorTreatment: preferences.colorTreatment,
+          referenceFrameIds: [rendered.referenceFrameId],
+          prompt: spec.artisticPrompt,
+          spec,
+          assetUrl: rendered.assetUrl,
+          assetFilePath: rendered.assetFilePath,
+          svgOverlayUrl: rendered.svgOverlayUrl,
+          generationCount: 1,
+        },
+      };
+
+      renderedPanelsMap.set(panel.panelId, updatedPanel);
+      job.completedPanels = renderedPanelsMap.size;
+      job.livePanelPreviews = [
+        ...job.livePanelPreviews,
+        {
+          panelId: panel.panelId,
+          pageNumber,
+          assetUrl: rendered.assetUrl,
+          caption: panel.caption,
+        },
+      ];
+
+      stageWriteChain = stageWriteChain.then(async () => {
+        job = await this.updateStage(job, "carbon_illustration", {
+          status: "running",
+          detail: `Illustrated ${renderedPanelsMap.size}/${flatPanels.length} panels`,
+        });
+      });
+      await stageWriteChain;
+    });
 
     storyboard = {
       ...storyboard,
@@ -628,7 +759,8 @@ export class MangaJobManager {
             colorTreatment: preferences.colorTreatment,
             actionIntensity: preferences.actionIntensity,
             regenerationSeed: 2,
-            useNanoBanana: isReal,
+            useNanoBanana,
+            characters: characters!,
           });
           p.panels[targetIdx] = {
             ...targetPanel,
@@ -814,7 +946,9 @@ export class MangaJobManager {
       colorTreatment: activeColor,
       actionIntensity: activeIntensity,
       regenerationSeed: nextGenCount,
-      useNanoBanana: project.mode === "real",
+      useNanoBanana:
+        useReal && process.env.MANGA_DISABLE_NANO_BANANA !== "true",
+      characters: project.characters,
     });
 
     const cacheBustedUrl = `${rendered.assetUrl}?v=${Date.now()}`;

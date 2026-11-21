@@ -1,12 +1,10 @@
 # Manga Conventions & Lettering Reference
 
 ## 1. Reading Flow Mechanics
-- **Right-to-Left (`rtl`, Default)**:
-  - Top-right panel is `reading_order: 1`.
-  - Horizontal progression moves right → left within a row tier before stepping down top → bottom.
-  - Inside a single panel, place the initiating caption or speech bubble in the **top-right** safe zone and the response or reaction SFX toward the **bottom-left**.
-- **Left-to-Right (`ltr`, Optional)**:
-  - Mirrors the horizontal row traversal so top-left is `reading_order: 1`, moving left → right, top → bottom.
+- **Left-to-Right (`ltr`, Required)**:
+  - Top-left panel is `reading_order: 1`.
+  - Horizontal progression moves left → right within a row tier before stepping down top → bottom.
+  - Inside a single panel, place the initiating caption or speech bubble in the **top-left** safe zone and the response or reaction SFX toward the **bottom-right**.
 
 ## 2. Safe Zones & Occlusion Prevention
 - Compute focal coordinates `(focal_x, focal_y)` in `[0, 1]` representing the primary player face, shooting hand, or basketball/rim intersection.
@@ -20,15 +18,17 @@
 4. `thought`: Soft scalloped or dashed-radiating internal monologue bubble, grounded in emotional state without claiming verbatim real-world press quotes.
 5. `scoreboard` / `time_indicator`: Monospace broadcast-meets-manga stamp (`Q4 00:04.2 | VIPERS 101 - TITANS 102`).
 
-## 4. Basketball Sound Effect (SFX) Pairing Matrix
-| Basketball Action | Primary English SFX | Japanese Sub-Glyph | Typography Treatment |
-| :--- | :--- | :--- | :--- |
-| One/two-hand dunk | `BOOOOM!!` | `ドゴォン!!` | Heavy skewed block, white stroke, impact burst |
-| Clean 3PT / jumper make | `SWISH!` | `シュパッ` | Sleek italic arc following net snap |
-| Live dribble / setup | `THUMP THUMP` | `ダムダム` | Low rhythmic staggered baseline |
-| Hard plant / step-back | `SKREEECH!` | `キュッ!` | Sharp angular slash near court floor |
-| Rim block / swat | `SMACK!!` | `バシィッ!!` | Explosive radial shard lettering |
-| Iron bounce / rim-out | `CLANG!` | `ガァン!` | Rigid metallic block vibration |
-| Explosive drive / leap | `WHOOSH!` | `ゴォッ!` | Tapered diagonal speed sweep |
-| Final buzzer | `BZZZZZZT!!` | `ビィィィッ!!` | Full-width stark banner |
-| Crowd eruption | `ROAAAAR!!` | `ワァァァ!!` | Rising background wave lettering |
+## 4. Basketball Sound Effect (SFX) Matrix (Language-Matched)
+Always match the language of the input video/prompt. For English inputs, output English SFX ONLY (never append Japanese katakana):
+
+| Basketball Action | English SFX | Typography Treatment |
+| :--- | :--- | :--- |
+| One/two-hand dunk | `BOOOOM!!` | Heavy skewed block, white stroke, impact burst |
+| Clean 3PT / jumper make | `SWISH!` | Sleek italic arc following net snap |
+| Live dribble / setup | `THUMP THUMP` | Low rhythmic staggered baseline |
+| Hard plant / step-back | `SKREEECH!` | Sharp angular slash near court floor |
+| Rim block / swat | `SMACK!!` | Explosive radial shard lettering |
+| Iron bounce / rim-out | `CLANG!` | Rigid metallic block vibration |
+| Explosive drive / leap | `WHOOSH!` | Tapered diagonal speed sweep |
+| Final buzzer | `BZZZZZZT!!` | Full-width stark banner |
+| Crowd eruption | `ROAAAAR!!` | Rising background wave lettering |

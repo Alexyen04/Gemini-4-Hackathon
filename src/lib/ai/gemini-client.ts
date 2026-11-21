@@ -1,10 +1,66 @@
 import fs from "fs/promises";
+import sharp from "sharp";
 import { GoogleGenAI, ThinkingLevel, Part } from "@google/genai";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { ALLOWED_GEMINI_MODELS, AllowedGeminiModel } from "@/types/manga";
 
 export type AgentModelRole = "argon" | "carbon" | "hydrogen" | "neon";
+
+const GEMINI_UNSUPPORTED_SCHEMA_KEYS = new Set([
+  "$schema",
+  "additionalProperties",
+  "default",
+  "description",
+  "examples",
+  "exclusiveMaximum",
+  "exclusiveMinimum",
+  "format",
+  "maximum",
+  "maxItems",
+  "maxLength",
+  "minimum",
+  "minItems",
+  "minLength",
+  "multipleOf",
+  "pattern",
+  "title",
+]);
+
+/**
+ * Keeps the response's object/array/type shape while removing constraints that
+ * can make Gemini's constrained decoder exceed its serving-state limit.
+ * Full enum/range/length validation still happens locally through Zod.
+ */
+export function buildGeminiServingSchema(
+  schema: Record<string, unknown>
+): Record<string, unknown> {
+  const simplify = (source: Record<string, unknown>): Record<string, unknown> => {
+    const result: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(source)) {
+      if (GEMINI_UNSUPPORTED_SCHEMA_KEYS.has(key)) continue;
+      // Enums multiply constrained-decoding states substantially. Their base
+      // JSON type is enough for serving; Zod enforces exact values afterward.
+      if (key === "enum" || key === "const") continue;
+      if (key === "properties" && child && typeof child === "object") {
+        // Property names are application data, not schema keywords. In
+        // particular, a required "title" field must never be stripped.
+        result[key] = Object.fromEntries(
+          Object.entries(child as Record<string, Record<string, unknown>>).map(
+            ([field, fieldSchema]) => [field, simplify(fieldSchema)]
+          )
+        );
+      } else if (key === "items" && child && typeof child === "object") {
+        result[key] = simplify(child as Record<string, unknown>);
+      } else {
+        result[key] = child;
+      }
+    }
+    return result;
+  };
+
+  return simplify(schema);
+}
 
 export class GeminiConfigurationError extends Error {
   constructor(message: string) {
@@ -39,38 +95,16 @@ export function resolveRoleModel(role: AgentModelRole): AllowedGeminiModel {
   return assertAllowedGeminiModel(map[role]);
 }
 
-// Gemini rejects schemas with numeric bounds / length limits / formats as "too many states".
-// Strip them from what we send; Zod still enforces every constraint on the parsed reply.
-const SERVING_HEAVY_KEYS = new Set([
-  "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf",
-  "minItems", "maxItems", "minLength", "maxLength", "pattern", "format",
-  "default", "$schema", "additionalProperties",
-]);
-export function stripServingConstraints(node: unknown): Record<string, unknown> {
-  const walk = (n: unknown): unknown => {
-    if (Array.isArray(n)) return n.map(walk);
-    if (!n || typeof n !== "object") return n;
-    const out: Record<string, unknown> = {};
-    // keep the limits the model must respect, as a text hint instead of a hard constraint
-    const o = n as Record<string, unknown>;
-    const hints = (["minimum", "maximum", "minItems", "maxItems"] as const)
-      .filter((k) => typeof o[k] === "number")
-      .map((k) => `${k} ${o[k]}`);
-    if (hints.length) out.description = [o.description, hints.join(", ")].filter(Boolean).join(". ");
-    for (const [k, v] of Object.entries(n)) {
-      if (k === "description" && hints.length) continue;
-      if (SERVING_HEAVY_KEYS.has(k)) continue;
-      if (k === "const") out.enum = [v]; // Gemini ignores `const` (z.literal); it honors a one-value enum
-      else out[k] = walk(v);
-    }
-    return out;
-  };
-  return walk(node) as Record<string, unknown>;
+export function getConfiguredApiKey(): string | null {
+  const key = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "").trim();
+  if (!key || key === "your_gemini_api_key_here") {
+    return null;
+  }
+  return key;
 }
 
 export function hasConfiguredApiKey(): boolean {
-  const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
-  return Boolean(key.trim() && key.trim() !== "your_gemini_api_key_here");
+  return Boolean(getConfiguredApiKey());
 }
 
 /**
@@ -124,15 +158,29 @@ export class GeminiClientService {
 
   static async imagePathToInlinePart(
     filePath: string,
-    mimeType = "image/png"
+    mimeType = "image/jpeg",
+    maxWidth = 768
   ): Promise<Part> {
-    const bytes = await fs.readFile(filePath);
-    return {
-      inlineData: {
-        mimeType,
-        data: bytes.toString("base64"),
-      },
-    };
+    try {
+      const compactJpeg = await sharp(filePath)
+        .resize({ width: maxWidth, withoutEnlargement: true })
+        .jpeg({ quality: 80 })
+        .toBuffer();
+      return {
+        inlineData: {
+          mimeType: "image/jpeg",
+          data: compactJpeg.toString("base64"),
+        },
+      };
+    } catch {
+      const bytes = await fs.readFile(filePath);
+      return {
+        inlineData: {
+          mimeType,
+          data: bytes.toString("base64"),
+        },
+      };
+    }
   }
 
   /**
@@ -214,11 +262,16 @@ export class GeminiClientService {
 
     const model = resolveRoleModel(role);
     const ai = this.getClient();
-    // Callers only name their schema in the prompt; send the real shape so Gemini can't guess field names.
-    const responseSchema =
-      jsonSchema ?? stripServingConstraints(zodToJsonSchema(zodSchema, { $refStrategy: "none", target: "jsonSchema7" }));
+    let effectiveJsonSchema = jsonSchema;
+    if (!effectiveJsonSchema) {
+      const generatedSchema = zodToJsonSchema(
+        zodSchema as z.ZodTypeAny,
+        { $refStrategy: "none" }
+      ) as Record<string, unknown>;
+      effectiveJsonSchema = buildGeminiServingSchema(generatedSchema);
+    }
 
-    const normalizedParts: Part[] = contents.map((item) =>
+    const requestParts: Part[] = contents.map((item) =>
       typeof item === "string" ? { text: item } : item
     );
 
@@ -230,16 +283,20 @@ export class GeminiClientService {
         : ThinkingLevel.MEDIUM;
 
     let lastError: unknown = null;
+    let useResponseSchema = true;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const startedAt = Date.now();
       try {
         const response = await ai.models.generateContent({
           model,
-          contents: [{ role: "user", parts: normalizedParts }],
+          contents: [{ role: "user", parts: requestParts }],
           config: {
             systemInstruction,
             responseMimeType: "application/json",
-            responseJsonSchema: responseSchema,
+            ...(useResponseSchema
+              ? { responseJsonSchema: effectiveJsonSchema }
+              : {}),
             thinkingConfig: {
               thinkingLevel: sdkThinkingLevel,
             },
@@ -259,10 +316,12 @@ export class GeminiClientService {
 
         const parsedObj = JSON.parse(cleanedJson);
         const validated = zodSchema.parse(parsedObj);
+        console.info(`[Gemini ${role}] ${model} structured call attempt ${attempt + 1} succeeded in ${Date.now() - startedAt}ms`);
         return { data: validated, modelUsed: model };
       } catch (err) {
         lastError = err;
         const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[Gemini ${role}] ${model} structured call attempt ${attempt + 1} failed in ${Date.now() - startedAt}ms: ${msg.slice(0, 500)}`);
         // Do not retry auth or configuration errors
         if (
           err instanceof GeminiConfigurationError ||
@@ -273,6 +332,39 @@ export class GeminiClientService {
           throw err;
         }
         if (attempt < maxRetries) {
+          const schemaRejected =
+            msg.includes("schema produces a constraint that has too many states") ||
+            msg.includes("too many states for serving") ||
+            msg.includes("schema at top-level requires unspecified property");
+          if (schemaRejected && useResponseSchema) {
+            useResponseSchema = false;
+            requestParts.push({
+              text:
+                "The API could not apply constrained decoding to this large schema. " +
+                "Still return one complete JSON object with exactly the requested structure and value types. " +
+                `Use this shape-only schema as guidance: ${JSON.stringify(
+                  effectiveJsonSchema
+                )}`,
+            });
+            continue;
+          }
+
+          const validationFeedback =
+            err instanceof z.ZodError
+              ? JSON.stringify(
+                  err.issues.map(({ path, code, message }) => ({
+                    path,
+                    code,
+                    message,
+                  }))
+                )
+              : msg;
+          requestParts.push({
+            text:
+              "CORRECTION REQUIRED: The previous JSON response was invalid. " +
+              "Return a complete replacement JSON object that follows the supplied response schema exactly. " +
+              `Validation errors: ${validationFeedback}`,
+          });
           const backoffMs = 900 * Math.pow(2, attempt);
           await new Promise((r) => setTimeout(r, backoffMs));
         }

@@ -1,15 +1,11 @@
-import { WorkspaceShell } from "@/components/WorkspaceShell";
+import { redirect } from "next/navigation";
 
+// Storyboard editor removed from the product; old links land in the reader.
 export default async function StoryboardRoutePage({
   searchParams,
 }: {
   searchParams: Promise<{ storyId?: string }>;
 }) {
-  const params = await searchParams;
-  return (
-    <WorkspaceShell
-      initialScreen="storyboard"
-      initialStoryId={params.storyId}
-    />
-  );
+  const { storyId } = await searchParams;
+  redirect(storyId ? `/reader?storyId=${encodeURIComponent(storyId)}` : "/reader");
 }

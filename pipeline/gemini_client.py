@@ -19,7 +19,6 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 
 load_dotenv()
-load_dotenv(".env.local")  # same key file the Next.js studio uses; .env wins if both set it
 
 TModel = TypeVar("TModel", bound=BaseModel)
 

@@ -113,8 +113,6 @@ async def run_ingest_pipeline(
     clip_post_pad_sec: float = 1.5,
     preview_mode: HandoffMediaMode = "hybrid",
     dry_run_synthetic: bool = False,
-    fast_plan: bool = False,
-    preview: bool = True,
 ) -> Path:
     job_dir = (output_root / job_input.job_id).resolve()
     cache_dir = job_dir / "cache"
@@ -151,15 +149,6 @@ async def run_ingest_pipeline(
             video_meta,
             override_chunk_sec=override_chunk_sec or 10.0,
             override_overlap_sec=override_overlap_sec if override_overlap_sec is not None else 3.0,
-            split_into_quarters=split_into_quarters,
-        )
-    elif fast_plan:
-        # Deterministic plan (no Gemini call): for preset focus strings from the studio UI.
-        game_plan = fallback_game_plan_from_prompt(
-            job_input,
-            video_meta,
-            override_chunk_sec=override_chunk_sec,
-            override_overlap_sec=override_overlap_sec,
             split_into_quarters=split_into_quarters,
         )
     else:
@@ -462,9 +451,6 @@ async def run_ingest_pipeline(
     handoff_time = round(time.perf_counter() - t_stage, 2)
     print(f"[Stage 3.5] Wrote handoff package -> {handoff_path} ({handoff_time}s)")
 
-    if not preview:
-        return handoff_path
-
     tradeoffs = estimate_handoff_mode_tradeoffs(handoff)
     print("\n=== Storyline Model Input Mode Tradeoffs (Speed vs. Frame Choice) ===")
     for mode_name, info in tradeoffs.items():
@@ -530,8 +516,6 @@ def main() -> None:
         help="Which storyline input mode to preview after building handoff.json.",
     )
     parser.add_argument("--no-cache", action="store_true", help="Ignore cached Stage 1-3 JSON artifacts.")
-    parser.add_argument("--fast-plan", action="store_true", help="Skip the Stage 1 planner LLM call; use the deterministic plan.")
-    parser.add_argument("--no-preview", action="store_true", help="Skip the storyline input-mode preview after handoff.json.")
     parser.add_argument(
         "--realign-legacy-cache",
         action="store_true",
@@ -588,8 +572,6 @@ def main() -> None:
             clip_post_pad_sec=args.clip_post_pad,
             preview_mode=args.preview_handoff_mode,  # type: ignore[arg-type]
             dry_run_synthetic=args.dry_run_synthetic,
-            fast_plan=args.fast_plan,
-            preview=not args.no_preview,
         )
     )
 

@@ -34,13 +34,13 @@ Default to **4 to 5 panels per page**, adapting dynamically to narrative tension
 - `splash` (85–100%): Decisive game-winner or chapter climax.
 
 ### Rule 3: Reading Direction
-- Default to traditional Japanese **Right-to-Left, Top-to-Bottom (`rtl`)**, with optional **Left-to-Right (`ltr`)** mode.
+- Strictly **Left-to-Right, Top-to-Bottom (`ltr`)** reading order (`reading_order: 1` at top-left, flowing left → right, top → bottom).
 
 ### Rule 4: Expressive Anime-Inspired Sports Emotions
 Convey athletic intensity through crisp facial shading (`kage`) and eye highlights: `determination`, `shock`, `triumph`, `exhaustion`, `defeat`, `focus`.
 
-### Rule 5: Stylized Manga Sound Effects (SFX)
-Pair verified physics with bold English + Japanese sub-glyph SFX (`BOOOOM!! / ドゴォン!!`, `SWISH! / シュパッ!`, `THUMP THUMP / ダムダム`, `SKREEECH! / キュッ!`, `SMACK!! / バシィッ!!`, `CLANG! / ガァン!`, `WHOOSH! / ゴォッ!`, `ROAAAAR!! / ワァァァ!!`).
+### Rule 5: Stylized Manga Sound Effects (SFX) & Language Matching
+Match the language of the input media and user prompt across all captions, dialogue, and SFX. For English media/prompts, use **English SFX only** (`BOOOOM!!`, `SWISH!`, `THUMP THUMP`, `SKREEECH!`, `SMACK!!`, `CLANG!`, `WHOOSH!`, `BZZZZZZT!!`, `ROAAAAR!!`)—do NOT add Japanese/katakana characters unless the input media or prompt is in Japanese.
 
 ### Rule 6: Dialogue, Narration & Factual Integrity
 Support `speech`, `shout`, `thought`, `narration`, `time_indicator`, and `scoreboard` (1–2 concise elements per panel, never covering faces/hands/ball, never fabricating verbatim press quotes from real athletes).
@@ -61,7 +61,7 @@ Lock recurring player silhouettes, hairstyles, accessories, and jersey numbers i
 Use curated non-overlapping templates (`balanced_four`, `balanced_five`, `dramatic_three`, `hero_action_four`, `climax_showcase_three`, `vertical_strip_four`, `full_splash`) with clean gutters and margins.
 
 ### Rule 12: Master Art Presets & Independent Controls
-Default preset: **`hyperkinetic_shonen_anime`**, alongside **`authentic_sports_manga`** and **`cinematic_anime_drama`**. Honor all four independent controls: `colorTreatment` (`traditional_monochrome`, `full_anime_color`, `selective_color`), `actionIntensity` (`grounded`, `dramatic`, `explosive`), `referenceInfluence` (`light`, `balanced`, `strong`), and `storytellingFocus` (`action_focused`, `balanced`, `emotion_focused`).
+Default preset: **`authentic_sports_manga`**, alongside **`hyperkinetic_shonen_anime`** and **`cinematic_anime_drama`**. Honor all four independent controls: `colorTreatment` (`traditional_monochrome`, `full_anime_color`, `selective_color`), `actionIntensity` (`grounded`, `dramatic`, `explosive`), `referenceInfluence` (`light`, `balanced`, `strong`), and `storytellingFocus` (`action_focused`, `balanced`, `emotion_focused`).
 
 ### Rule 13: Strict Factual Grounding
 Every panel links to a verified `source_clip_id` and valid `source_timestamp`. Never invent missing plays or alter outcomes.

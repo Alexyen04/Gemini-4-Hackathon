@@ -149,7 +149,7 @@ export function System() {
             tl.set(token, { autoAlpha: 0 })
           }
         })
-        if (desktop) tl.timeScale(1.35) // whole flow ≈ 7s
+        if (desktop) tl.timeScale(2) // whole flow ≈ 5s
       })
       return () => mm.revert()
     },

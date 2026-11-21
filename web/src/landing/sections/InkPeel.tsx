@@ -73,7 +73,7 @@ export function InkPeel() {
     <section ref={root} aria-labelledby="peel-h" className="relative bg-paper px-4 py-14 md:px-8 md:py-28">
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-wrap items-end gap-4">
-          <ChapterTag n="03" />
+          <ChapterTag n="02" />
           <h2 id="peel-h" className="peel-h display text-[clamp(52px,8vw,140px)]">
             Every panel traces back.
           </h2>

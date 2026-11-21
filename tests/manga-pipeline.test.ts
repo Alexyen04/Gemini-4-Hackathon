@@ -31,7 +31,7 @@ import { GET as mediaGet } from "@/app/api/media/[...path]/route";
 import { PATCH as patchPanel } from "@/app/api/manga/[storyId]/panels/[panelId]/route";
 import { GET as exportGet } from "@/app/api/manga/[storyId]/export/route";
 
-describe("COURT & INK — Comprehensive 14-Point Automated Test Suite", () => {
+describe("DUNKOMA — Comprehensive 14-Point Automated Test Suite", () => {
   let tempDataDir = "";
   let sampleClips: NormalizedClip[] = [];
   let generatedProject: MangaStoryProject;

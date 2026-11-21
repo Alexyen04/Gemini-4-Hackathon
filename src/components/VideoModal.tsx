@@ -57,7 +57,7 @@ export const VideoModal: React.FC<VideoModalProps> = ({ target, onClose }) => {
             {/* Modal Header */}
             <div className="flex items-center justify-between bg-ink-950 text-paper-50 px-5 py-3.5 border-b-2 border-ink-950">
               <div className="flex items-center gap-2.5">
-                <span className="bg-crimson-500 text-white font-mono text-xs font-bold px-2 py-0.5 uppercase">
+                <span className="bg-crimson-500 text-ink-950 font-mono text-xs font-bold px-2 py-0.5 uppercase">
                   Source Footage Verified
                 </span>
                 <h3 className="font-display text-lg tracking-wide uppercase">
@@ -149,7 +149,7 @@ export const VideoModal: React.FC<VideoModalProps> = ({ target, onClose }) => {
                 <button
                   type="button"
                   onClick={onClose}
-                  className="mt-4 w-full bg-crimson-500 text-white font-display uppercase tracking-wider py-2.5 border-2 border-ink-950 shadow-manga-sm hover:bg-crimson-600 transition-colors"
+                  className="mt-4 w-full bg-crimson-500 text-ink-950 font-display uppercase tracking-wider py-2.5 border-2 border-ink-950 shadow-manga-sm hover:bg-crimson-600 transition-colors"
                 >
                   Return to Manga Reader
                 </button>

@@ -8,7 +8,6 @@ import {
   BookOpen,
   Columns,
   Download,
-  Edit3,
   Eye,
   Hash,
   Play,
@@ -25,7 +24,6 @@ export const MangaReader: React.FC = () => {
     zoomedPanel,
     setZoomedPanel,
     setActiveScreen,
-    setSelectedPanelId,
   } = useMangaStore();
 
   const [viewMode, setViewMode] = useState<"scroll" | "single_page">("scroll");
@@ -70,7 +68,7 @@ export const MangaReader: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveScreen("studio")}
-          className="mt-4 bg-crimson-500 text-white font-display uppercase tracking-wider px-5 py-2.5 border-2 border-ink-950"
+          className="mt-4 bg-crimson-500 text-ink-950 font-display uppercase tracking-wider px-5 py-2.5 border-2 border-ink-950"
         >
           Open Manga Studio
         </button>
@@ -146,14 +144,6 @@ export const MangaReader: React.FC = () => {
             Order
           </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveScreen("storyboard")}
-            className="inline-flex items-center gap-1.5 bg-paper-50 text-ink-950 font-mono text-[11px] font-bold uppercase px-3 py-1.5 hover:bg-crimson-500 hover:text-white transition-colors"
-          >
-            <Edit3 className="w-3.5 h-3.5" />
-            Edit Panels
-          </button>
         </div>
       </div>
 
@@ -298,22 +288,10 @@ export const MangaReader: React.FC = () => {
                       setZoomedPanel(null);
                       openVideoForPanel(p);
                     }}
-                    className="inline-flex items-center gap-1.5 bg-crimson-500 text-white font-mono text-xs font-bold uppercase px-3 py-1.5 border border-ink-950"
+                    className="inline-flex items-center gap-1.5 bg-crimson-500 text-ink-950 font-mono text-xs font-bold uppercase px-3 py-1.5 border border-ink-950"
                   >
                     <Play className="w-3.5 h-3.5 fill-current" />
                     Watch Clip
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedPanelId(zoomedPanel.panelId);
-                      setZoomedPanel(null);
-                      setActiveScreen("storyboard");
-                    }}
-                    className="inline-flex items-center gap-1.5 bg-ink-950 text-paper-50 font-mono text-xs font-bold uppercase px-3 py-1.5"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                    Edit / Regenerate
                   </button>
                 </div>
               </div>

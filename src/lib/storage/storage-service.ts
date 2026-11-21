@@ -18,7 +18,16 @@ export class StorageService {
   }
 
   static getSubDir(
-    sub: "clips" | "keyframes" | "stories" | "jobs" | "panels" | "pages" | "tmp"
+    sub:
+      | "clips"
+      | "keyframes"
+      | "stories"
+      | "jobs"
+      | "panels"
+      | "pages"
+      | "tmp"
+      | "raw_videos"
+      | "ingest"
   ): string {
     return path.join(this.getBaseDir(), sub);
   }
@@ -32,6 +41,8 @@ export class StorageService {
       "panels",
       "pages",
       "tmp",
+      "raw_videos",
+      "ingest",
     ] as const;
     await Promise.all(
       subs.map((s) => fs.mkdir(this.getSubDir(s), { recursive: true }))
@@ -40,15 +51,15 @@ export class StorageService {
 
   /**
    * Converts an absolute path inside `data/` into a browser-accessible
-   * `/api/media/...` URL.
+   * `/api/media/...` URL (encoding spaces/special chars safely).
    */
   static toMediaUrl(absFilePath: string): string {
     const base = this.getBaseDir();
-    const rel = path.relative(base, absFilePath).split(path.sep).join("/");
-    if (rel.startsWith("..")) {
+    const rel = path.relative(base, absFilePath).split(path.sep);
+    if (rel[0] === ".." || path.isAbsolute(rel[0] || "")) {
       throw new Error("File path is outside managed data directory");
     }
-    return `/api/media/${rel}`;
+    return `/api/media/${rel.map((seg) => encodeURIComponent(seg)).join("/")}`;
   }
 
   /**
@@ -57,14 +68,21 @@ export class StorageService {
    * public exposure of internal `manga_refs` / `reference_cache` assets.
    */
   static resolveMediaSegments(segments: string[]): string {
+    const decoded = segments.map((seg) => {
+      try {
+        return decodeURIComponent(seg);
+      } catch {
+        return seg;
+      }
+    });
     if (
-      segments[0] === "manga_refs" ||
-      segments[0] === "reference_cache"
+      decoded[0] === "manga_refs" ||
+      decoded[0] === "reference_cache"
     ) {
       throw new Error("Internal manga reference assets cannot be publicly served");
     }
     const base = path.resolve(this.getBaseDir());
-    const joined = path.resolve(base, ...segments);
+    const joined = path.resolve(base, ...decoded);
     if (joined !== base && !joined.startsWith(base + path.sep)) {
       throw new Error("Invalid media path traversal blocked");
     }

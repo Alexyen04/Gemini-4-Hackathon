@@ -6,48 +6,48 @@
       "label": "clip · keyframes",
       "in": "basketball clip (seconds to ~1 min)",
       "out": "normalized clip + keyframes",
-      "model": "ffmpeg + sharp"
+      "model": "ffmpeg (local, no model)"
     },
     {
       "id": "02",
       "title": "Watch",
-      "label": "gemini-4-argon ×N",
+      "label": "gemini-4-hydrogen ×2",
       "in": "clip + keyframes",
-      "out": "verified actions, players, jersey #s, timestamps",
-      "model": "gemini-4-argon"
+      "out": "candidate beats + verified play facts",
+      "model": "gemini-4-hydrogen (scout ∥ clip analysis)"
     },
     {
       "id": "03",
-      "title": "Plot",
-      "label": "gemini-4-carbon",
-      "in": "clip analyses",
-      "out": "5-act manga arc",
-      "model": "gemini-4-carbon"
+      "title": "Rank",
+      "label": "gemini-decision-1",
+      "in": "candidate beats + keyframes",
+      "out": "beats scored on action × story",
+      "model": "gemini-decision-1"
     },
     {
       "id": "04",
       "title": "Storyboard",
-      "label": "gemini-4-carbon",
-      "in": "arc + manga style guide",
-      "out": "pages, panels, camera shots",
-      "model": "gemini-4-carbon"
+      "label": "gemini-4-hydrogen",
+      "in": "ranked beats + analysis",
+      "out": "5-act arc → pages, panels, shots",
+      "model": "gemini-4-hydrogen"
     },
     {
       "id": "05",
       "title": "Illustrate + Check",
-      "label": "carbon → hydrogen",
-      "in": "storyboard + keyframes",
-      "out": "inked panels, facts & quality checked",
-      "model": "gemini-4-carbon + gemini-4-hydrogen"
+      "label": "carbon → nano-banana → hydrogen",
+      "in": "storyboard + real frames",
+      "out": "manga panels, facts checked",
+      "model": "gemini-4-carbon + gemini-nano-banana-2.1 + gemini-4-hydrogen"
     },
     {
       "id": "06",
       "title": "Read",
       "label": "click panel → play clip",
       "in": "illustrated panels",
-      "out": "rtl/ltr manga pages + interactive reader",
-      "model": "page composer + reader"
+      "out": "manga pages + interactive reader",
+      "model": "local page composer"
     }
   ],
-  "lanes": 4
+  "lanes": 2
 }
