@@ -1,0 +1,53 @@
+{
+  "panels": [
+    {
+      "id": "01",
+      "title": "Input",
+      "label": "video · audio · focus",
+      "in": "game footage + focus prompt",
+      "out": "JobInput",
+      "model": "ffmpeg + gemini-4-carbon (plan)"
+    },
+    {
+      "id": "02",
+      "title": "Scouts",
+      "label": "gemini-4-argon ×N",
+      "in": "overlapping chunks",
+      "out": "SegmentOutput[]",
+      "model": "gemini-4-argon"
+    },
+    {
+      "id": "03",
+      "title": "Rank",
+      "label": "gemini-decision-1",
+      "in": "CandidateBeat[]",
+      "out": "ScoredCandidate[]",
+      "model": "gemini-decision-1"
+    },
+    {
+      "id": "04",
+      "title": "Direct",
+      "label": "gemini-4-carbon",
+      "in": "summaries + pool + keyframes",
+      "out": "MangaStoryboard",
+      "model": "gemini-4-carbon"
+    },
+    {
+      "id": "05",
+      "title": "Ink + Check",
+      "label": "nano-banana-2.1 → fact check",
+      "in": "real frame + storyboard",
+      "out": "creative panel, facts verified",
+      "model": "gemini-nano-banana-2.1 + gemini-decision-1"
+    },
+    {
+      "id": "06",
+      "title": "Manga",
+      "label": "real story · new art",
+      "in": "MangaStoryboard + panels",
+      "out": "manga page + provenance",
+      "model": "reader ui"
+    }
+  ],
+  "lanes": 4
+}

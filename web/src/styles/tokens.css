@@ -1,0 +1,19 @@
+/* Shared design tokens: "Court Orange". /demo can import this file to match the landing page. */
+:root {
+  --paper: #f4eee2;
+  --ink: #16130f;
+  --tone: #a39e93;
+  --accent: #ff5a1f; /* climax, CTA, provenance only. Fill/stroke/display ≥32px — never small text on paper */
+  --on-accent: #16130f;
+
+  --font-display: 'Tanker', 'Impact', sans-serif;
+  --font-ui: 'General Sans', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SFMono-Regular', monospace;
+  --font-sfx-jp: 'Dela Gothic One', sans-serif;
+
+  --border-panel: 4px;
+  --border-thin: 3px;
+  --shadow-hard: 4px 4px 0 var(--ink);
+  --shadow-hard-lg: 8px 8px 0 var(--ink);
+  --ease-ink: cubic-bezier(0.7, 0, 0.2, 1);
+}

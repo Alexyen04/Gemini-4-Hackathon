@@ -1,0 +1,101 @@
+{
+  "job_id": "sample_fixture",
+  "title": "THE FOURTH QUARTER STORM",
+  "subtitle": "Chapter 1: Down Eight",
+  "user_focus": "Follow #23 in the 4th quarter comeback",
+  "reading_direction": "rtl",
+  "arc_summary": "FIXTURE ONLY — shape matches MangaStoryboard; not a real pipeline result.",
+  "pages": [
+    {
+      "page_number": 1,
+      "layout_template": "climax_splash_4panel",
+      "panels": [
+        {
+          "panel_id": "p1_1",
+          "reading_order": 1,
+          "slot": "top_wide",
+          "candidate_id": "seg_01_b00",
+          "narrative_role": "tension_pause",
+          "visual_intensity": "quiet",
+          "crop_focus": "scoreboard",
+          "action_bbox_norm": [0.1, 0.05, 0.9, 0.4],
+          "narration_box": "Down 2. One minute left.",
+          "caption_quote": null,
+          "thought_bubble": null,
+          "sfx": null,
+          "effects": { "speed_lines": "none", "impact_burst": false },
+          "assets": {
+            "panel_image_url": "/landing-media/sample-p1_1-ink.jpg",
+            "source_frame_url": "/landing-media/sample-p1_1-raw.jpg",
+            "source_clip_url": ""
+          },
+          "provenance": {
+            "timestamp_sec": 38.1,
+            "ink_method": "opencv_deterministic",
+            "edge_iou": 1.0,
+            "decision_fidelity_score": 0.99,
+            "scores": { "action_spectacle": 0.12, "narrative_leverage": 0.81, "user_focus_match": 0.7 }
+          }
+        },
+        {
+          "panel_id": "p1_2",
+          "reading_order": 2,
+          "slot": "splash_hero",
+          "candidate_id": "seg_01_b01",
+          "narrative_role": "climax",
+          "visual_intensity": "explosive",
+          "crop_focus": "full_action",
+          "action_bbox_norm": [0.22, 0.15, 0.78, 0.88],
+          "narration_box": "The trap closes in.",
+          "caption_quote": { "text": "STRIPPED AWAY! HE'S GOING COAST TO COAST!", "timestamp_sec": 43.8 },
+          "thought_bubble": {
+            "subject": "#23",
+            "text": "One opening—just give me one step.",
+            "grounding_cue": "Trapped near the sideline before splitting the double-team"
+          },
+          "sfx": { "text": "SWIPE!", "katakana": "シュッ", "style": "sharp" },
+          "effects": { "speed_lines": "radial", "impact_burst": true },
+          "assets": {
+            "panel_image_url": "/landing-media/peel-ink.jpg",
+            "source_frame_url": "/landing-media/peel-raw.jpg",
+            "source_clip_url": ""
+          },
+          "provenance": {
+            "timestamp_sec": 43.8,
+            "ink_method": "opencv_deterministic",
+            "edge_iou": 0.94,
+            "decision_fidelity_score": 0.97,
+            "scores": { "action_spectacle": 0.86, "narrative_leverage": 0.91, "user_focus_match": 0.95 }
+          }
+        },
+        {
+          "panel_id": "p1_3",
+          "reading_order": 3,
+          "slot": "mid_right",
+          "candidate_id": "seg_01_b02",
+          "narrative_role": "aftermath",
+          "visual_intensity": "medium",
+          "crop_focus": "bench_reaction",
+          "action_bbox_norm": [0.3, 0.2, 0.7, 0.7],
+          "narration_box": null,
+          "caption_quote": null,
+          "thought_bubble": null,
+          "sfx": { "text": "ROAR", "katakana": "ワッ", "style": "heavy" },
+          "effects": { "speed_lines": "none", "impact_burst": false },
+          "assets": {
+            "panel_image_url": "/landing-media/sample-p1_3-ink.jpg",
+            "source_frame_url": "/landing-media/sample-p1_3-raw.jpg",
+            "source_clip_url": ""
+          },
+          "provenance": {
+            "timestamp_sec": 47.0,
+            "ink_method": "opencv_deterministic",
+            "edge_iou": 1.0,
+            "decision_fidelity_score": 0.98,
+            "scores": { "action_spectacle": 0.4, "narrative_leverage": 0.66, "user_focus_match": 0.6 }
+          }
+        }
+      ]
+    }
+  ]
+}

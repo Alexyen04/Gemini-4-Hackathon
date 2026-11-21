@@ -1,0 +1,8 @@
+{
+  "_note": "Two pages made from the SAME clip with different focus prompts. Edit prompts to match what you actually ran.",
+  "source": { "media": "hero-frame.jpg", "label": "same clip" },
+  "stories": [
+    { "id": "a", "focus": "follow #1", "media": "story-a.jpg" },
+    { "id": "b", "focus": "the crowd", "media": "story-b.jpg" }
+  ]
+}
