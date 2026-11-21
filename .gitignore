@@ -1,0 +1,27 @@
+# Local media & generated artifacts (NEVER commit copyrighted video/frames)
+data/
+outputs/
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.webm
+*.wav
+*.mp3
+
+# Secrets & environment
+.env
+.env.local
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Node / Frontend
+node_modules/
+web/dist/
+.DS_Store
+Thumbs.db

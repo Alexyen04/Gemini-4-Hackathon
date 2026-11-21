@@ -148,46 +148,53 @@ p_spectacle = result.answers["high_spectacle"].noul
 
 ---
 
-## 4. End-to-End 5-Stage Pipeline Architecture
+## 4. End-to-End Pipeline Architecture
 
-> **Critical optimization:** Never pass full raw video clips twice. Segment workers watch video once; the Manga Director (`gemini-4-carbon`) works from **structured segment summaries + scored candidate metadata + representative keyframes (images)**.
+> **Critical optimization:** Full raw broadcast chunks are watched **once** in Stage 2. Stages 1 → 3.5 output a self-contained `DirectorHandoffPackage` (`outputs/<job_id>/handoff.json`) with **dual-tier media**: full unbroken live sequence clips (`8–18s`) for story/clock continuity **plus** paired tight zoomed-in broadcast replay snippets (`2.5–4.5s`, `replay_angles`) and burst frames so Stage 4/5 can convert close-up frames directly into manga panels without AI visual extrapolation.
 
 ```
 [Video + User Focus Prompt]
         │
         ▼
-Stage 1: Plan & Adaptive Chunk (gemini-4-carbon + ffmpeg)
-  • Short clip (≤ 5 min): 1–3 chunks of 60–90s with 5–10s overlap
-  • Long game (10–60+ min): 3–5 min (or quarter-level) overlapping chunks
+Stage 1: Plan & Adaptive Chunk (`pipeline/planner.py` + `media/chunker.py`)
+  • Gemini 4 Carbon parses `user_focus` -> `GamePlan` + adaptive `ScoringWeights`
+  • Duration-adaptive overlapping chunks (<=2m: 1 chunk; 2–6m: 90s/10s; 6–20m: 150s/12s; >20m: 180s/14s)
+  • Measures exact H.264 stream-copy `actual_start_sec` per chunk (zero keyframe timestamp drift)
         │
-        ▼  (concurrent via asyncio.gather, max 4–6 workers)
-Stage 2: Parallel Segment Scouting (gemini-4-argon / gemini-4-hydrogen)
+        ▼  (concurrent via asyncio.gather, bounded semaphore)
+Stage 2: Parallel Segment Scouting (`pipeline/scout.py` — `gemini-4-hydrogen` / `gemini-4-argon`)
   • Outputs per chunk:
     1) Segment Game-State Summary (score swing, runs, protagonist status)
-    2) Action Candidates (dunks, blocks, big shots, steals)
-    3) Story/Emotion Candidates (timeouts, misses, fouls, reactions, scoreboard tension)
-  • Deduplicate overlapping timestamps across chunk boundaries
+    2) Full Unbroken LIVE `action` Sequences (`is_replay=false`, 5–10s setup -> ~1.5s post-finish)
+    3) Tight Zoomed-In Broadcast Replay Snippets (`is_replay=true`, 2–4.5s, `rim_or_baseline` / `tight_closeup`)
+    4) `story_emotion` Beats (celebrations, huddles, traps, misses, foul trouble)
+  • Merges back-to-back split live action beats (`merge_connected_action_beats`)
+  • Pairs zoomed-in replays onto their parent live play as `replay_angles` (`attach_replays_to_live_beats`),
+    keeping unmatched zoomed replays as compact standalone options
         │
         ▼
-Stage 3: Two-Axis Calibrated Ranking (gemini-decision-1)
-  • Scores every candidate on:
-    - S_action (Spectacle / visual electricity)
-    - S_story (Narrative leverage / stakes / momentum / emotion)
-    - S_focus (Alignment with user's focus prompt)
-    - S_visual (Clarity, ball visibility, readable faces, no blur/replay)
-  • Keeps a BALANCED candidate pool (~20–25 beats: top Action + top Story beats)
+Stage 3: Two-Axis Calibrated Ranking (`pipeline/ranker.py` — `gemini-decision-1` on `v1beta`)
+  • Extracts sharpest Laplacian keyframe for each candidate + attached `replay_angles`
+  • Scores every candidate on 4 calibrated `noul` axes:
+    - `action_spectacle`, `narrative_leverage`, `user_focus_match`, `visual_clarity`
+  • Selects a non-overlapping, chronologically ordered BALANCED pool (~22 beats)
         │
         ▼
-Stage 4: Manga Director & Storyboard (gemini-4-carbon)
-  • Reads all segment summaries + balanced candidate pool + candidate keyframes + user focus
+Stage 3.5: Pre-Director Handoff (`pipeline/handoff.py` -> `outputs/<job_id>/handoff.json`)
+  • Cuts frame-accurate `.mp4` clips + multi-frame `burst_frames`:
+    - Live sequences: full unbroken play (`start - 3.0s .. end + 1.5s`, up to 18s)
+    - Paired `replay_angles` & standalone replays: compact `2.5–4.5s` zoomed-in snippets + 3-frame close-up bursts
+  • Exposes `build_storyline_model_input(handoff, mode="keyframes_only" | "burst_frames" | "video_clips" | "hybrid")`
+        │
+        ▼
+Stage 4: Manga Director & Storyboard (`pipeline/director.py` — `gemini-4-carbon`)
+  • Consumes `handoff.json` via `build_storyline_model_input(...)`
   • Builds Kishōtenketsu arc: Setup (Ki) → Escalation (Shō) → Turning Point (Ten) → Climax Splash + Aftermath (Ketsu)
-  • Casts 6–12 beats into narrative_role + visual_intensity + page layout templates
+  • Casts 6–12 beats into `narrative_role` + `visual_intensity` + page layout templates (preferring zoomed `replay_angles` for close-up panels!)
         │
         ▼
 Stage 5: Frame Extraction, Anchored Inking & Interactive Reader
-  • Pulls 8–10 fps around each chosen beat's peak timestamp (ffmpeg)
-  • Picks sharpest + highest-clarity frame (Laplacian variance + Decisions API)
-  • Gets action bounding box (gemini-4-hydrogen) → aspect-matched smart crop
+  • Crops chosen live or zoomed-replay frame via `action_bbox_norm`
   • Inks via OpenCV deterministic manga filter (XDoG edges + screentone dots)
     [Stretch: Nano Banana 2.1 + Edge-IoU & Decisions API Fidelity Gate → fallback to OpenCV]
   • Overlays non-mutating speed lines, impact bursts, SFX, verbatim captions, narration & thought bubbles
@@ -245,21 +252,47 @@ All modules exchange data using the Pydantic contracts in `schemas/models.py` (m
 }
 ```
 
-### 5.3 `ScoredCandidate` (Stage 3 output)
-Extends `CandidateBeat` with:
+### 5.3 `ScoredCandidate` & `DirectorHandoffPackage` (Stages 3 & 3.5 -> `outputs/<job_id>/handoff.json`)
+`DirectorHandoffPackage` is the exact boundary artifact produced by `run_ingest.py` for Stage 4 (`director.py`). Each `ScoredCandidate` in `selected_pool` carries its full live clip, sharp keyframe, 5-frame burst strip, **and** paired zoomed-in `replay_angles` (`2.5–4.5s` snippets + 3-frame bursts):
 ```json
 {
-  "keyframe_path": "outputs/<job_id>/keyframes/seg_01_b01.jpg",
+  "candidate_id": "seg_19_b05",
+  "segment_id": "seg_19",
+  "category": "action",
+  "start_sec": 5245.2,
+  "end_sec": 5258.5,
+  "peak_sec": 5257.1,
+  "is_replay": false,
+  "camera_framing": "wide_court | medium_action | tight_closeup | rim_or_baseline",
+  "keyframe_path": "outputs/<job_id>/keyframes/seg_19_b05.jpg",
+  "burst_frames": [{ "path": "...", "timestamp_sec": 5255.1, "sharpness": 1820.4 }],
+  "clip_path": "outputs/<job_id>/clips/seg_19_b05.mp4",
+  "clip_start_sec": 5242.2,
+  "clip_end_sec": 5260.0,
+  "replay_angles": [
+    {
+      "replay_id": "seg_19_b09",
+      "start_sec": 5285.8,
+      "end_sec": 5289.8,
+      "peak_sec": 5288.0,
+      "camera_framing": "rim_or_baseline",
+      "description": "Zoomed baseline replay of #24 releasing the three-pointer.",
+      "keyframe_path": "outputs/<job_id>/keyframes/seg_19_b05_rep1.jpg",
+      "clip_path": "outputs/<job_id>/clips/seg_19_b05_rep1.mp4",
+      "burst_frames": [{ "path": "...", "timestamp_sec": 5288.0, "sharpness": 2410.1 }]
+    }
+  ],
   "scores": {
-    "action_spectacle": 0.86,
-    "narrative_leverage": 0.91,
-    "user_focus_match": 0.95,
-    "visual_clarity": 0.82,
-    "composite_story_rank": 0.89
+    "action_spectacle": 0.90,
+    "narrative_leverage": 0.94,
+    "user_focus_match": 0.92,
+    "visual_clarity": 0.85,
+    "composite_story_rank": 0.91
   },
   "casting_quadrant": "climax_candidate | swagger_montage | emotional_beat | drop"
 }
 ```
+Stage 4 can load `DirectorHandoffPackage` and call `build_storyline_model_input(handoff, mode=...)` from `pipeline/handoff.py` (`"keyframes_only"`, `"burst_frames"`, `"video_clips"`, or `"hybrid"`).
 
 ### 5.4 `MangaStoryboard` (Stage 4 & Stage 5 final output consumed by Frontend UI)
 ```json
@@ -334,19 +367,25 @@ Extends `CandidateBeat` with:
 Gemini-4-Hackathon/
 ├── AGENTS.md                   # This file (source of truth)
 ├── .gitignore                  # MUST ignore data/, outputs/, *.mp4, *.mov, .env
-├── requirements.txt            # Python dependencies (google-genai>=3.2.0, etc.)
+├── .env.example                # Template for GEMINI_API_KEY
+├── requirements.txt            # Python dependencies (google-genai>=3.2.0, imageio-ffmpeg, etc.)
+├── run_ingest.py               # CLI runner for Stages 1 -> 3.5 (-> outputs/<job_id>/handoff.json)
 ├── schemas/
-│   └── models.py               # Pydantic contracts (JobInput, SegmentOutput, MangaStoryboard)
+│   └── models.py               # Pydantic contracts (JobInput, DirectorHandoffPackage, MangaStoryboard)
 ├── media/                      # [Owner A: Video & Image Plumbing]
-│   ├── chunker.py              # FFmpeg adaptive overlapping chunker
-│   ├── frames.py               # 8–10 fps local frame pull, Laplacian sharpness, smart crop
+│   ├── ffmpeg_utils.py         # System / imageio-ffmpeg resolver, OpenCV prober, clip trimmer
+│   ├── chunker.py              # Adaptive overlapping chunker w/ exact H.264 actual_start_sec
+│   ├── frames.py               # 8 fps sharpness keyframe picker & chronological burst extractor
 │   └── manga_filter.py         # Deterministic OpenCV XDoG + halftone screentone + speedlines
 ├── pipeline/                   # [Owner B: Gemini 4 & Decisions Agent Pipeline]
-│   ├── planner.py              # User focus parsing & chunking plan
-│   ├── scout.py                # Concurrent Gemini 4 Argon/Hydrogen segment analysis
-│   ├── ranker.py               # Gemini Decision 1 two-axis scoring & balanced pool
-│   ├── director.py             # Gemini 4 Carbon Kishōtenketsu storyboard generator
-│   ├── fidelity_gate.py        # Edge-IoU + Gemini Decision 1 gate for Nano Banana 2.1
+│   ├── prompts.py              # Centralized prompts & Decisions API rubrics (Stages 1 -> 3.5)
+│   ├── gemini_client.py        # v1 Interactions/Files + v1beta Decisions SDK wrappers & retries
+│   ├── planner.py              # Stage 1: User focus parsing & adaptive GamePlan
+│   ├── scout.py                # Stage 2: Concurrent scouting, sequence merge & replay pairing
+│   ├── ranker.py               # Stage 3: Gemini Decision 1 scoring & balanced pool selection
+│   ├── handoff.py              # Stage 3.5: Dual-tier clip/burst builder & storyline input modes
+│   ├── director.py             # Stage 4: Gemini 4 Carbon Kishōtenketsu storyboard generator
+│   ├── fidelity_gate.py        # Stage 5: Edge-IoU + Gemini Decision 1 gate for Nano Banana 2.1
 │   └── orchestrator.py         # End-to-end runner + FastAPI server
 ├── web/                        # [Owner C: Interactive Manga Reader UI]
 │   ├── index.html / src/       # Asymmetric CSS Grid + clip-path templates, RTL/LTR toggle,
