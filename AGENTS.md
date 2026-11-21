@@ -13,24 +13,30 @@ We are building a **basketball-focused Video-to-Manga system** (NBA / NCAA / per
 
 ### Core Differentiators
 1. **Storyline-First, Not Highlight-Only:** We separate **Action/Spectacle** from **Narrative Leverage**. A meaningless Q1 breakaway windmill dunk up 20 is *not* a climax—it is cut or cast as a small dominance-establishing panel. Quiet emotional beats (missed free throw, tired close-up, scoreboard tension, coach timeout) earn the full-bleed climax splash.
-2. **No-Invention Rule (100% Real-Frame Anchored):** Every panel traces back to an exact FFmpeg-extracted source frame and timestamp. Clicking/hovering a panel ("Ink Peel / X-Ray") reveals the original frame, timestamp, transcript line, and fidelity score.
+2. **Real-Frame Anchored Visuals:** Every panel traces back to an exact FFmpeg-extracted source frame and timestamp. Clicking/hovering a panel ("Ink Peel / X-Ray") reveals the original frame, timestamp, transcript line, and fidelity score.
 3. **User-Steerable Protagonist:** The same basketball clip produces a different narrative arc depending on the user's focus prompt.
 
 ---
 
 ## 2. Non-Negotiable Rules & Guardrails
 
-### A. Fidelity & Ethics (No-Invention Rule)
-- **Real frames only:** Never generate a panel from text alone. Every panel starts from an exact video frame extracted via `ffmpeg`.
+### A. Grounded Fidelity & Manga Dramatization Rules
+We enforce **strict visual and plot grounding** while allowing **context-grounded manga dramatization** so the result reads like real manga (*Slam Dunk*), not a sterile box score:
+
+- **Visuals — Real frames only (Strict):** Never generate a panel from text alone. Every panel starts from an exact video frame extracted via `ffmpeg`.
 - **Deterministic baseline first:** Our OpenCV manga filter (grayscale + XDoG/edge ink lines + halftone screentone dots + high contrast) is 100% faithful by construction and serves as the default MVP renderer and fallback.
 - **Supervised AI inking (stretch):** Any panel stylized with `gemini-nano-banana-2.1` **must pass the Fidelity Gate**:
   1. Edge-map IoU / overlap with the source frame exceeds threshold, **and**
   2. `gemini-decision-1` comparing source frame vs. inked panel confirms high probability for: same number of people, same positions, ball in same place, no added/removed objects, same jersey numbers.
   - On failure, **automatically fall back** to the deterministic OpenCV panel.
-- **Text provenance:**
-  - `caption_quote`: Verbatim commentator words only, with source transcript timestamp (within ±2s of panel).
-  - `narration_box`: Strictly factual statements grounded in visible footage or commentary (score, clock, run, who scored).
-  - **No invented speech bubbles** for real players unless clearly spoken on camera.
+- **Plot & Events — No Fake Storylines (Strict):** Never invent plays, scores, injuries, fouls, or fabricated off-court rivalries that did not happen in the footage.
+- **Text — Three Clearly Separated Layers (Dramatization Allowed & Visually Distinguished):**
+  1. **`caption_quote` (Verbatim Audio):** Exact commentator words with source transcript timestamp (within ±2s of panel). Never alter quoted commentary.
+  2. **`narration_box` (Dramatized Manga Narration):** Punchy, dramatic manga narration grounded in the real on-court event and game state (e.g., *"Two defenders slam the trap shut—four seconds on the shot clock."*). Dramatic tone is encouraged; factual claims (score, time, play) must stay true to the footage.
+  3. **`thought_bubble` (Extrapolated Inner Monologue):** Since players aren't mic'd up, short inner thoughts extrapolated directly from the immediate on-court tactical/emotional situation are allowed (e.g., trapped in a double-team: *"Nowhere to pass… I have to split them."*). Rules:
+     - Must be strictly grounded in what is visibly happening in that beat (e.g., trapped, contesting a shot, down late, celebrating).
+     - Styled explicitly as an **inner thought bubble** (cloud/dotted tail or italicized inner monologue), never presented as a literal spoken quote.
+     - Keep respectful and game-focused—no trash-talk or controversial statements attributed to real people.
 
 ### B. Media Rights & Repository Hygiene
 - **Never commit video clips, broadcast frames, or generated NBA/NCAA panels to Git.** Keep all media inside gitignored `data/` / `outputs/` directories.
@@ -57,7 +63,7 @@ We are building a **basketball-focused Video-to-Manga system** (NBA / NCAA / per
 | :--- | :--- | :--- | :--- |
 | **Parallel Segment Scout & Frame Grounding** | `gemini-4-argon` *(supports opt-in Agentic Video Understanding)* or `gemini-4-hydrogen` | `client.interactions.create` (`v1`) | Watches overlapping video chunks concurrently; extracts transcripts, game-state summaries, action + story beats, and action bounding boxes. |
 | **Calibrated Scorer & Fidelity Gate** | `gemini-decision-1` | `client.decisions.create` (**`v1beta`**) | Evaluates independent `noul` (yes/no) and `score` questions in one pass with calibrated probabilities and 0 output tokens. |
-| **Planner & Manga Story Director** | `gemini-4-carbon` | `client.interactions.create` (`v1`) | Interprets user focus prompt; synthesizes full game arc (*Kishōtenketsu*), casts beats into manga roles, writes factual narration and layout JSON. |
+| **Planner & Manga Story Director** | `gemini-4-carbon` | `client.interactions.create` (`v1`) | Interprets user focus prompt; synthesizes full game arc (*Kishōtenketsu*), casts beats into manga roles, writes dramatized narration, context-grounded thought bubbles, and layout JSON. |
 | **Supervised Manga Inking (Stretch)** | `gemini-nano-banana-2.1` | `client.interactions.create` (`v1`) | Converts real cropped frames to manga ink style strictly behind the Fidelity Gate. |
 
 ### Verified SDK Snippets
@@ -184,7 +190,7 @@ Stage 5: Frame Extraction, Anchored Inking & Interactive Reader
   • Gets action bounding box (gemini-4-hydrogen) → aspect-matched smart crop
   • Inks via OpenCV deterministic manga filter (XDoG edges + screentone dots)
     [Stretch: Nano Banana 2.1 + Edge-IoU & Decisions API Fidelity Gate → fallback to OpenCV]
-  • Overlays non-mutating speed lines, impact bursts, SFX, verbatim captions, narration boxes
+  • Overlays non-mutating speed lines, impact bursts, SFX, verbatim captions, narration & thought bubbles
   • Renders in Interactive Manga Reader UI with Click/Hover "Ink Peel" provenance
 ```
 
@@ -193,13 +199,13 @@ Stage 5: Frame Extraction, Anchored Inking & Interactive Reader
 | | **High Narrative Leverage ($S_{\text{story}}$)** | **Low Narrative Leverage ($S_{\text{story}}$)** |
 | :--- | :--- | :--- |
 | **High Action ($S_{\text{action}}$)** | **Climax / Turning-Point Splash** (60–75% dominant panel, heavy speed lines, huge SFX) | **Cut — or Small Dominance Panel** (e.g., Q1 windmill dunk up 15: skip, or 1 small Setup panel) |
-| **Low Action ($S_{\text{action}}$)** | **Emotional / Tension Beat** (tight face/eyes or scoreboard crop, quiet narration box, no speed lines) | **Drop** |
+| **Low Action ($S_{\text{action}}$)** | **Emotional / Tension Beat** (tight face/eyes or scoreboard crop, quiet narration/thought bubble, no speed lines) | **Drop** |
 
 ---
 
 ## 5. Canonical Shared Data Contracts (JSON Schemas)
 
-All modules exchange data using these exact contracts (implement in `schemas/models.py` with Pydantic and mirror in frontend TypeScript types).
+All modules exchange data using the Pydantic contracts in `schemas/models.py` (mirror in frontend TypeScript types).
 
 ### 5.1 `JobInput`
 ```json
@@ -240,7 +246,7 @@ All modules exchange data using these exact contracts (implement in `schemas/mod
 ```
 
 ### 5.3 `ScoredCandidate` (Stage 3 output)
-Extends `Candidate` with:
+Extends `CandidateBeat` with:
 ```json
 {
   "keyframe_path": "outputs/<job_id>/keyframes/seg_01_b01.jpg",
@@ -278,10 +284,15 @@ Extends `Candidate` with:
           "visual_intensity": "quiet | medium | explosive",
           "crop_focus": "full_action | tight_face | hoop_and_ball | scoreboard | bench_reaction",
           "action_bbox_norm": [0.22, 0.15, 0.78, 0.88],
-          "narration_box": "Down 2. One minute left.",
+          "narration_box": "Down 2. One minute left—the trap closes in.",
           "caption_quote": {
             "text": "STRIPPED AWAY! HE'S GOING COAST TO COAST!",
             "timestamp_sec": 43.8
+          },
+          "thought_bubble": {
+            "subject": "#23",
+            "text": "One opening—just give me one step.",
+            "grounding_cue": "Trapped near the sideline before splitting the double-team"
           },
           "sfx": {
             "text": "SWIPE!",
@@ -317,12 +328,13 @@ Extends `Candidate` with:
 
 ---
 
-## 6. Recommended Directory Structure & Workstream Ownership
+## 6. Repository Directory Structure & Workstream Ownership
 
 ```text
-sports-to-manga/
-├── AGENTS.md                   # This file
+Gemini-4-Hackathon/
+├── AGENTS.md                   # This file (source of truth)
 ├── .gitignore                  # MUST ignore data/, outputs/, *.mp4, *.mov, .env
+├── requirements.txt            # Python dependencies (google-genai>=3.2.0, etc.)
 ├── schemas/
 │   └── models.py               # Pydantic contracts (JobInput, SegmentOutput, MangaStoryboard)
 ├── media/                      # [Owner A: Video & Image Plumbing]
@@ -344,7 +356,7 @@ sports-to-manga/
 ├── evals/                      # [Owner D: Baselines, Metrics & Stress Tests]
 │   ├── baseline_highlights.py  # Highlight-only (S_action only) baseline
 │   ├── baseline_uniform.py     # Even-sampling baseline
-│   └── metrics.py              # Invention rate, fidelity score, caption accuracy, coverage
+│   └── metrics.py              # Invention rate, fidelity score, text grounding, coverage
 ├── data/                       # [GITIGNORED] Local test videos (never commit!)
 └── outputs/                    # [GITIGNORED] Generated frames, panels, storyboards
 ```
@@ -355,9 +367,10 @@ sports-to-manga/
 
 To make the output look like an **authentic basketball manga** rather than a photo filter in a grid:
 - **Asymmetric page templates** (CSS Grid + diagonal `clip-path` panel borders, thick black 3–4px panel frames, varied gutter spacing, full-bleed climax splash panel taking 60–75% of page height).
-- **Clear visual distinction of text layers:**
-  - `narration_box`: Crisp white rectangle with black border, clean upright manga font.
-  - `caption_quote`: Dynamic slanted/jagged shout box with small timestamp badge (`00:43.8`) proving verbatim transcript provenance.
+- **Clear visual distinction of the three text layers (real vs. dramatized):**
+  - `narration_box`: Crisp white/cream rectangle with solid black border — dramatized manga narration grounded in the real play/score.
+  - `caption_quote`: Dynamic slanted/jagged broadcaster box with small timestamp badge (`00:43.8`) proving verbatim audio provenance.
+  - `thought_bubble`: Cloud-bordered bubble with dotted tail (or soft italicized inner-monologue box) — clearly signals context-extrapolated player thoughts, never literal spoken quotes.
   - `sfx`: Large rotated bold impact typography (optional subtle katakana subtitle) positioned near the action.
 - **Signature UI Interaction — "Ink Peel / X-Ray":**
   - Clicking or holding any panel reveals the **original unedited source frame** (with a before/after slider or instant flip), exact video timestamp, `gemini-decision-1` Action vs. Story scores, fidelity score, and an optional 3-second source clip playback.
@@ -383,5 +396,18 @@ To make the output look like an **authentic basketball manga** rather than a pho
 - **Invention Rate:** External reviewers inspect panel vs. source frame (*"Is anything depicted that isn't in the real frame?"*) — compare against one-shot text-to-manga baseline.
 - **Automated Fidelity Score:** Edge-IoU + `gemini-decision-1` same-scene probability.
 - **Storyline Preference (Blind A/B Vote):** 10+ attendees compare **Storyline-Driven Manga** vs. **Highlight-Only Baseline** and **Even-Sampling Baseline**.
-- **Caption Provenance Accuracy:** % of quotes matching transcript verbatim within ±2s.
+- **Text Grounding & Quote Accuracy:** % of `caption_quote` boxes matching transcript verbatim within ±2s, plus human/Decisions-API check that `narration_box` and `thought_bubble` stay grounded in the visible on-court moment (zero fabricated plays or scores).
 - **Latency:** Seconds per generated manga page.
+
+---
+
+## 9. Local Setup & Multi-Agent Collaboration Rules
+
+- **Environment:** Python 3.10+, `pip install -r requirements.txt`, and `GEMINI_API_KEY` set in `.env` (never committed).
+- **FFmpeg requirement:** Install `ffmpeg` on `PATH` (or support `imageio-ffmpeg` / `opencv-python` fallback for frame extraction if `ffmpeg` is missing on a teammate's machine).
+- **Avoid merge conflicts across parallel agents:**
+  - Owner A edits only `media/`
+  - Owner B edits only `pipeline/`
+  - Owner C edits only `web/`
+  - Owner D edits only `evals/`
+  - Changes to `schemas/models.py` or `AGENTS.md` must be coordinated before modifying downstream modules.
