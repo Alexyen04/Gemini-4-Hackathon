@@ -4,6 +4,7 @@ import sharp from "sharp";
 import {
   ActionIntensity,
   CarbonIllustrationSpec,
+  CharacterReference,
   ColorTreatment,
   MangaPage,
   MangaPanel,
@@ -41,6 +42,7 @@ export class HybridMangaRenderer {
     actionIntensity?: ActionIntensity;
     regenerationSeed?: number;
     useNanoBanana?: boolean;
+    characters?: CharacterReference[];
   }): Promise<{
     assetFilePath: string;
     assetUrl: string;
@@ -59,6 +61,7 @@ export class HybridMangaRenderer {
       actionIntensity = "dramatic",
       regenerationSeed = 0,
       useNanoBanana = false,
+      characters = [],
     } = params;
 
     await StorageService.ensureDirectories();
@@ -125,6 +128,7 @@ export class HybridMangaRenderer {
             spec,
             colorTreatment,
             actionIntensity,
+            characters,
           });
       }
 

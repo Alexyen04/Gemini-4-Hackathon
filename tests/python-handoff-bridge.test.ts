@@ -229,6 +229,7 @@ describe("Raw Video -> Python Handoff -> Storyline & Manga Integration", () => {
       finishedJob = await StorageService.getJob(job.jobId);
     }
 
+    expect(finishedJob?.error).toBeNull();
     expect(finishedJob?.status).toBe("completed");
     expect(
       finishedJob?.stages.find((s) => s.id === "video_ingest")?.status

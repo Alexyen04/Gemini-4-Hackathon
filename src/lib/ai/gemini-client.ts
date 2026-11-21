@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import sharp from "sharp";
 import { GoogleGenAI, ThinkingLevel, Part } from "@google/genai";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
@@ -157,15 +158,29 @@ export class GeminiClientService {
 
   static async imagePathToInlinePart(
     filePath: string,
-    mimeType = "image/png"
+    mimeType = "image/jpeg",
+    maxWidth = 768
   ): Promise<Part> {
-    const bytes = await fs.readFile(filePath);
-    return {
-      inlineData: {
-        mimeType,
-        data: bytes.toString("base64"),
-      },
-    };
+    try {
+      const compactJpeg = await sharp(filePath)
+        .resize({ width: maxWidth, withoutEnlargement: true })
+        .jpeg({ quality: 80 })
+        .toBuffer();
+      return {
+        inlineData: {
+          mimeType: "image/jpeg",
+          data: compactJpeg.toString("base64"),
+        },
+      };
+    } catch {
+      const bytes = await fs.readFile(filePath);
+      return {
+        inlineData: {
+          mimeType,
+          data: bytes.toString("base64"),
+        },
+      };
+    }
   }
 
   /**

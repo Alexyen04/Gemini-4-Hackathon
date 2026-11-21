@@ -4,10 +4,10 @@ Guides **Gemini 4 Carbon** and the rendering engine in translating basketball hi
 
 ## 1. Three Master Art Style Presets
 
-### Preset 1: `authentic_sports_manga` (Authentic Sports Manga)
+### Preset 1: `authentic_sports_manga` (Authentic Sports Manga — **Default**)
 - **Visual DNA**: Crisp variable-weight G-pen ink contours, detailed crosshatching, classic 45° rotated halftone screentones, grounded athletic proportions, high-contrast sumi ink on warm manga paper.
 
-### Preset 2: `hyperkinetic_shonen_anime` (Hyperkinetic Shonen Anime — **Default**)
+### Preset 2: `hyperkinetic_shonen_anime` (Hyperkinetic Shonen Anime)
 - **Visual DNA**: High-energy modern sports anime/manga (*Kuroko's Basketball* / shonen jump kineticism). Sharp expressive anime eye highlights, bold brush contours, dramatic foreshortening, intense speed lines, explosive radial impact bursts, kinetic aura/motion trails around the ball and shooting hand, and stark shadow massing.
 
 ### Preset 3: `cinematic_anime_drama` (Cinematic Anime Drama)

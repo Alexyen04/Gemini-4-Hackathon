@@ -19,6 +19,7 @@ import {
 import { StorageService } from "@/lib/storage/storage-service";
 import {
   hasConfiguredApiKey,
+  mapWithConcurrency,
   resolveRoleModel,
 } from "@/lib/ai/gemini-client";
 import { ClipUnderstandingAgent } from "@/lib/ai/clip-understanding";
@@ -97,7 +98,7 @@ export class MangaJobManager {
       {
         id: "narrative_planning",
         label: "Stage 2. Narrative Planning",
-        model: tag("carbon"),
+        model: tag("neon"),
         status: "pending",
         detail: "Waiting to construct 5-act sports manga storyline",
         startedAt: null,
@@ -361,15 +362,31 @@ export class MangaJobManager {
       ];
     }
 
-    // ---- Stage 0: Manga Visual Reference Analysis (Gemini 4 Carbon + SHA-256 Cache) ----
+    // ---- Stage 0 & Stage 1 in Parallel (Reference Analysis + Clip Understanding) ----
     job = await this.updateStage(job, "reference_analysis", {
       status: "running",
       detail: "Scanning data/manga_refs/ for reference chapters & cached style profile...",
     });
-
-    const refOutcome = await MangaReferenceAnalyzer.ensureReferenceAnalysis({
-      mode: job.mode,
+    job = await this.updateStage(job, "clip_analysis", {
+      status: "running",
+      detail: `Analyzing ${clips.length} basketball clip(s) and keyframes...`,
     });
+
+    const [refOutcome, loadedOrAnalyzed] = await Promise.all([
+      MangaReferenceAnalyzer.ensureReferenceAnalysis({ mode: job.mode }),
+      (async () => {
+        const cached = await StorageService.loadCheckpoint<ClipEventAnalysis[]>(
+          job.jobId,
+          "clip_analysis"
+        );
+        if (cached) return cached;
+        const fresh = isReal
+          ? await ClipUnderstandingAgent.analyzeClips(clips)
+          : DemoPipelineSynthesizer.buildDemoClipAnalyses(clips);
+        await StorageService.saveCheckpoint(job.jobId, "clip_analysis", fresh);
+        return fresh;
+      })(),
+    ]);
 
     if (refOutcome.warning) {
       console.warn(`[Stage 0 Reference Analysis] ${refOutcome.warning}`);
@@ -391,23 +408,7 @@ export class MangaJobManager {
     });
 
     const { profile: styleProfile, index: referenceIndex } = refOutcome;
-
-    // ---- Stage 1: Basketball Clip Understanding (Gemini 4 Argon) ----
-    job = await this.updateStage(job, "clip_analysis", {
-      status: "running",
-      detail: `Analyzing ${clips.length} basketball clip(s) and keyframes...`,
-    });
-
-    let analyses = await StorageService.loadCheckpoint<ClipEventAnalysis[]>(
-      job.jobId,
-      "clip_analysis"
-    );
-    if (!analyses) {
-      analyses = isReal
-        ? await ClipUnderstandingAgent.analyzeClips(clips)
-        : DemoPipelineSynthesizer.buildDemoClipAnalyses(clips);
-      await StorageService.saveCheckpoint(job.jobId, "clip_analysis", analyses);
-    }
+    const analyses = loadedOrAnalyzed;
 
     job = await this.updateStage(job, "clip_analysis", {
       status: "completed",
@@ -544,11 +545,18 @@ export class MangaJobManager {
     const analysisMap = new Map(analyses.map((a) => [a.clipId, a]));
     const renderedPanelsMap = new Map<string, MangaPanel>();
 
-    // Fire ALL pages concurrently via Promise.all:
-    // Each page runs 1 batched Carbon API call for all its panels, then renders all its PNGs in parallel!
-    await Promise.all(
+    // Wave 1: Build per-page illustration specs.
+    // Fast-path: When Nano Banana 2.1 is active, Stage 3 (Carbon) already wrote rich
+    // panel direction & camera shots, and Nano Banana 2.1 sees the keyframe directly—
+    // skipping the redundant Stage 4 Carbon vision roundtrip cuts ~35-50s of latency!
+    // (Set MANGA_ENABLE_CARBON_SPEC_PASS=true to force the extra Carbon spec LLM pass.)
+    const runCarbonSpecPass =
+      isReal &&
+      (!useNanoBanana || process.env.MANGA_ENABLE_CARBON_SPEC_PASS === "true");
+
+    const pageSpecMaps = await Promise.all(
       storyboard.pages.map(async (page, pageIdx) => {
-        const pageSpecMap = isReal
+        const specMap = runCarbonSpecPass
           ? await CarbonIllustrationAgent.generatePageIllustrationSpecsBatch({
               page,
               clipMap,
@@ -572,61 +580,76 @@ export class MangaJobManager {
                 }),
               ])
             );
-
-        // Render every panel on this page concurrently on local CPU
-        await Promise.all(
-          page.panels.map(async (panel) => {
-            const clip = clipMap.get(panel.sourceClipId) || clips[0];
-            const spec = pageSpecMap.get(panel.panelId)!;
-
-            const rendered = await HybridMangaRenderer.renderPanelArtwork({
-              storyId: job.storyId,
-              panel,
-              clip,
-              style: storyboard!.style,
-              spec,
-              colorTreatment: preferences.colorTreatment,
-              actionIntensity: preferences.actionIntensity,
-              useNanoBanana,
-            });
-
-            const updatedPanel: MangaPanel = {
-              ...panel,
-              illustration: {
-                ...panel.illustration,
-                renderer: spec.renderer,
-                style: storyboard!.style,
-                colorTreatment: preferences.colorTreatment,
-                referenceFrameIds: [rendered.referenceFrameId],
-                prompt: spec.artisticPrompt,
-                spec,
-                assetUrl: rendered.assetUrl,
-                assetFilePath: rendered.assetFilePath,
-                svgOverlayUrl: rendered.svgOverlayUrl,
-                generationCount: 1,
-              },
-            };
-
-            renderedPanelsMap.set(panel.panelId, updatedPanel);
-            job.completedPanels = renderedPanelsMap.size;
-            job.livePanelPreviews = [
-              ...job.livePanelPreviews,
-              {
-                panelId: panel.panelId,
-                pageNumber: page.pageNumber,
-                assetUrl: rendered.assetUrl,
-                caption: panel.caption,
-              },
-            ];
-          })
-        );
-
-        job = await this.updateStage(job, "carbon_illustration", {
-          status: "running",
-          detail: `Rendered ${renderedPanelsMap.size}/${flatPanels.length} panels (Page ${page.pageNumber} done)`,
-        });
+        return { page, specMap };
       })
     );
+
+    // Wave 2: Render all panels across pages with bounded concurrency (avoids 429 stalls)
+    const allRenderTasks = pageSpecMaps.flatMap(({ page, specMap }) =>
+      page.panels.map((panel) => ({
+        pageNumber: page.pageNumber,
+        panel,
+        spec: specMap.get(panel.panelId)!,
+      }))
+    );
+    const imageConcurrency = Number(
+      process.env.MANGA_IMAGE_CONCURRENCY || (useNanoBanana ? 8 : 8)
+    );
+    let stageWriteChain = Promise.resolve();
+
+    await mapWithConcurrency(allRenderTasks, imageConcurrency, async (task) => {
+      const { pageNumber, panel, spec } = task;
+      const clip = clipMap.get(panel.sourceClipId) || clips[0];
+
+      const rendered = await HybridMangaRenderer.renderPanelArtwork({
+        storyId: job.storyId,
+        panel,
+        clip,
+        style: storyboard!.style,
+        spec,
+        colorTreatment: preferences.colorTreatment,
+        actionIntensity: preferences.actionIntensity,
+        useNanoBanana,
+        characters: characters!,
+      });
+
+      const updatedPanel: MangaPanel = {
+        ...panel,
+        illustration: {
+          ...panel.illustration,
+          renderer: spec.renderer,
+          style: storyboard!.style,
+          colorTreatment: preferences.colorTreatment,
+          referenceFrameIds: [rendered.referenceFrameId],
+          prompt: spec.artisticPrompt,
+          spec,
+          assetUrl: rendered.assetUrl,
+          assetFilePath: rendered.assetFilePath,
+          svgOverlayUrl: rendered.svgOverlayUrl,
+          generationCount: 1,
+        },
+      };
+
+      renderedPanelsMap.set(panel.panelId, updatedPanel);
+      job.completedPanels = renderedPanelsMap.size;
+      job.livePanelPreviews = [
+        ...job.livePanelPreviews,
+        {
+          panelId: panel.panelId,
+          pageNumber,
+          assetUrl: rendered.assetUrl,
+          caption: panel.caption,
+        },
+      ];
+
+      stageWriteChain = stageWriteChain.then(async () => {
+        job = await this.updateStage(job, "carbon_illustration", {
+          status: "running",
+          detail: `Illustrated ${renderedPanelsMap.size}/${flatPanels.length} panels`,
+        });
+      });
+      await stageWriteChain;
+    });
 
     storyboard = {
       ...storyboard,
@@ -737,6 +760,7 @@ export class MangaJobManager {
             actionIntensity: preferences.actionIntensity,
             regenerationSeed: 2,
             useNanoBanana,
+            characters: characters!,
           });
           p.panels[targetIdx] = {
             ...targetPanel,
@@ -924,6 +948,7 @@ export class MangaJobManager {
       regenerationSeed: nextGenCount,
       useNanoBanana:
         useReal && process.env.MANGA_DISABLE_NANO_BANANA !== "true",
+      characters: project.characters,
     });
 
     const cacheBustedUrl = `${rendered.assetUrl}?v=${Date.now()}`;

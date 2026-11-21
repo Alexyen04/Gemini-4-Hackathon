@@ -63,7 +63,7 @@ export const StoryboardEditor: React.FC = () => {
   const [effects, setEffects] = useState<string[]>([]);
   const [rendererMode, setRendererMode] = useState<RendererMode>("hybrid");
   const [overrideStyle, setOverrideStyle] = useState<MangaStylePreset>(
-    "hyperkinetic_shonen_anime"
+    "authentic_sports_manga"
   );
   const [overrideColor, setOverrideColor] = useState<ColorTreatment>(
     "traditional_monochrome"
@@ -387,18 +387,6 @@ export const StoryboardEditor: React.FC = () => {
                     </option>
                   ))}
                 </select>
-
-                <select
-                  disabled={isUpdatingLayout}
-                  value={currentProject.storyboard.readingDirection}
-                  onChange={(e) =>
-                    void handleDirectionSwitch(e.target.value as "rtl" | "ltr")
-                  }
-                  className="border-2 border-ink-950 bg-paper-100 px-2 py-1.5 font-mono text-xs font-bold"
-                >
-                  <option value="rtl">RTL ◀</option>
-                  <option value="ltr">LTR ▶</option>
-                </select>
               </div>
             )}
           </div>
@@ -471,13 +459,13 @@ export const StoryboardEditor: React.FC = () => {
                   </div>
                   <div>
                     <label className="block font-mono text-[11px] font-bold uppercase mb-1">
-                      JP Katakana Sub-SFX
+                      Secondary SFX (Optional)
                     </label>
                     <input
                       type="text"
                       value={sfxSubtext}
                       onChange={(e) => setSfxSubtext(e.target.value)}
-                      placeholder="ドゴォン!!"
+                      placeholder="Optional sub-SFX"
                       className="w-full border-2 border-ink-950 bg-paper-100 px-2.5 py-1.5 text-xs"
                     />
                   </div>

@@ -27,17 +27,17 @@ const STYLE_CARDS: Array<{
   tagline: string;
 }> = [
   {
-    id: "hyperkinetic_shonen_anime",
-    label: "Hyperkinetic Shonen Anime",
-    badge: "Default",
-    tagline:
-      "Expressive anime faces, dynamic foreshortening, heavy brush shadows, dramatic speed lines & explosive radial bursts",
-  },
-  {
     id: "authentic_sports_manga",
     label: "Authentic Sports Manga",
+    badge: "Default",
     tagline:
-      "Traditional B&W basketball manga with crisp G-pen contours, 45° halftone screentones & grounded athletic anatomy",
+      "Traditional B&W basketball manga with crisp G-pen contours, fine screentones & grounded athletic anatomy",
+  },
+  {
+    id: "hyperkinetic_shonen_anime",
+    label: "Hyperkinetic Shonen Anime",
+    tagline:
+      "Expressive anime faces, dynamic foreshortening, heavy brush shadows, dramatic speed lines & explosive radial bursts",
   },
   {
     id: "cinematic_anime_drama",
@@ -362,24 +362,15 @@ export const MangaStudio: React.FC = () => {
             </div>
           </div>
 
-          {/* Reading Direction & Target Page Count */}
+          {/* Reading Direction (LTR) & Target Page Count */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block font-mono text-[11px] font-bold uppercase mb-1">
                 Reading Direction
               </label>
-              <select
-                value={preferences.readingDirection}
-                onChange={(e) =>
-                  updatePreferences({
-                    readingDirection: e.target.value as "rtl" | "ltr",
-                  })
-                }
-                className="w-full border-2 border-ink-950 bg-paper-50 px-2.5 py-2 text-xs font-bold"
-              >
-                <option value="rtl">Right-to-Left (Traditional JP)</option>
-                <option value="ltr">Left-to-Right (Western)</option>
-              </select>
+              <div className="w-full border-2 border-ink-950 bg-paper-100 px-2.5 py-2 text-xs font-bold text-ink-950">
+                Left-to-Right (LTR ▶)
+              </div>
             </div>
 
             <div>

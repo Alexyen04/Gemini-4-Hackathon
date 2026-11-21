@@ -29,7 +29,7 @@ export const CANONICAL_MANGA_STYLES = [
 export type MangaStylePreset = (typeof CANONICAL_MANGA_STYLES)[number];
 
 /**
- * Supports the three improved anime/manga presets (with hyperkinetic_shonen_anime
+ * Supports the three anime/manga presets (with authentic_sports_manga
  * as the default) while seamlessly upgrading any previously persisted stories.
  */
 export const MangaStylePresetSchema = z.preprocess((val) => {
@@ -153,13 +153,13 @@ export const BubblePlacementSchema = z.enum([
 export type BubblePlacement = z.infer<typeof BubblePlacementSchema>;
 
 export const MangaPreferencesSchema = z.object({
-  style: MangaStylePresetSchema.default("hyperkinetic_shonen_anime"),
+  style: MangaStylePresetSchema.default("authentic_sports_manga"),
   colorTreatment: ColorTreatmentSchema.default("traditional_monochrome"),
   actionIntensity: ActionIntensitySchema.default("dramatic"),
   referenceInfluence: ReferenceInfluenceSchema.default("balanced"),
   storytellingFocus: StorytellingFocusSchema.default("balanced"),
   targetPages: z.number().int().min(1).max(8).default(3),
-  readingDirection: ReadingDirectionSchema.default("rtl"),
+  readingDirection: ReadingDirectionSchema.default("ltr"),
   storyFocus: z
     .enum([
       "team_comeback",

@@ -64,6 +64,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const preferences = MangaPreferencesSchema.parse({
       ...(parsed.preferences || {}),
+      readingDirection: "ltr",
       userPrompt: effectivePrompt,
       directorNotes: effectivePrompt || parsed.preferences?.directorNotes || "",
     });

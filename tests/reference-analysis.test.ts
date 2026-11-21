@@ -365,7 +365,7 @@ describe("Stage 0: Manga Visual Reference Analysis & Anime Controls Suite", () =
       "STRICT ORIGINALITY RULE"
     );
 
-    // Verify storyboard integration embeds reference guidance & hyperkinetic_shonen_anime default
+    // Verify storyboard integration embeds reference guidance & authentic_sports_manga default
     const clips = await SampleHighlightGenerator.ensureSampleHighlights();
     const analyses = DemoPipelineSynthesizer.buildDemoClipAnalyses(clips);
     const narrative = DemoPipelineSynthesizer.buildDemoNarrative(
@@ -373,7 +373,7 @@ describe("Stage 0: Manga Visual Reference Analysis & Anime Controls Suite", () =
       analyses
     );
     const defaultPrefs = MangaPreferencesSchema.parse({});
-    expect(defaultPrefs.style).toBe("hyperkinetic_shonen_anime");
+    expect(defaultPrefs.style).toBe("authentic_sports_manga");
 
     const sb = DemoPipelineSynthesizer.buildDemoStoryboard({
       storyId: "story_ref_guided",

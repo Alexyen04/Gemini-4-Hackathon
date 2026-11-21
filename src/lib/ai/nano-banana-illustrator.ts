@@ -3,6 +3,7 @@ import sharp from "sharp";
 import {
   ActionIntensity,
   CarbonIllustrationSpec,
+  CharacterReference,
   ColorTreatment,
   MangaPanel,
   MangaStylePreset,
@@ -133,6 +134,7 @@ export class NanoBananaMangaIllustrator {
     spec: CarbonIllustrationSpec;
     colorTreatment: ColorTreatment;
     actionIntensity: ActionIntensity;
+    characters?: CharacterReference[];
   }): Promise<Buffer | null> {
     const apiKey = getConfiguredApiKey();
     if (!apiKey) return null;
@@ -146,6 +148,7 @@ export class NanoBananaMangaIllustrator {
       spec,
       colorTreatment,
       actionIntensity,
+      characters = [],
     } = params;
 
     // 1. Crop the real source frame cleanly around Carbon's focal point so Nano Banana
@@ -172,14 +175,33 @@ export class NanoBananaMangaIllustrator {
 
     const croppedJpeg = await sharp(sourceImagePath)
       .extract({ left, top, width: cropW, height: cropH })
-      .resize(Math.min(1024, Math.max(512, targetWidth)), null, {
+      .resize(Math.min(768, Math.max(448, targetWidth)), null, {
         withoutEnlargement: false,
       })
-      .jpeg({ quality: 92 })
+      .jpeg({ quality: 84 })
       .toBuffer();
 
     const base64Frame = croppedJpeg.toString("base64");
     const aspectRatio = pickClosestAspectRatio(targetWidth, targetHeight);
+
+    const activeCharacters =
+      panel.characterIds.length > 0
+        ? characters.filter((c) => panel.characterIds.includes(c.characterId))
+        : characters.slice(0, 3);
+
+    const characterSheetBlock =
+      activeCharacters.length > 0
+        ? [
+            ``,
+            `LOCKED PLAYER IDENTITY SHEET (keep each player's anime face, hairstyle, build & uniform 100% consistent across all panels):`,
+            ...activeCharacters.map(
+              (c) =>
+                `- ${c.displayName}${c.jerseyNumber ? ` (#${c.jerseyNumber})` : ""} [${c.teamName}]: ${c.hairAndFaceTraits}; ${c.uniformDescription}${
+                  c.accessories.length > 0 ? `; accessories: ${c.accessories.join(", ")}` : ""
+                }.`
+            ),
+          ].join("\n")
+        : null;
 
     const prompt = [
       `Transform this real basketball video frame into an authentic Japanese sports manga/anime panel illustration.`,
@@ -190,13 +212,15 @@ export class NanoBananaMangaIllustrator {
       ``,
       `SCENE & CHARACTER DIRECTION:`,
       `- Camera & Mood: ${panel.cameraShot.replace(/_/g, " ")} | Emotion: ${panel.emotion} | Beat: ${panel.narrativeBeat}`,
+      `- Scene Beat Description: ${panel.description}`,
       `- Creative Direction: ${spec.artisticPrompt}`,
       spec.animeExpressionAndAnatomyNotes
         ? `- Expression & Anatomy: ${spec.animeExpressionAndAnatomyNotes}`
         : null,
+      characterSheetBlock,
       ``,
       `ESSENTIAL CRAFT & FIDELITY RULES:`,
-      `1. Translate the real athletes into cohesive, hand-drawn anime/manga characters (clean stylized facial planes, expressive eyes, crisp hair & jersey linework—NOT a raw photographic halftone filter) while preserving their recognizable likeness, exact pose, jersey numbers, team uniform contrast, and basketball position from the source frame.`,
+      `1. Translate the real athletes into cohesive, hand-drawn anime/manga characters (clean stylized facial planes, expressive eyes, crisp hair & jersey linework—NOT a raw photographic halftone filter) while preserving their exact identity from the sheet above, recognizable likeness, pose, jersey numbers, team uniform contrast, and basketball position.`,
       `2. Eliminate visual noise: strip out TV broadcast scorebugs, network watermarks, and cluttered spectator static so foreground athletes read cleanly at a glance.`,
       `3. Output PURE ILLUSTRATION ONLY: do NOT draw speech bubbles, caption boxes, panel borders, or sound-effect text (lettering is composited separately).`,
     ]
@@ -204,7 +228,7 @@ export class NanoBananaMangaIllustrator {
       .join("\n");
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 55_000);
+    const timeout = setTimeout(() => controller.abort(), 40_000);
 
     try {
       const res = await fetch(INTERACTIONS_ENDPOINT, {

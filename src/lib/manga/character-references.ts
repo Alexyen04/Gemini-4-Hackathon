@@ -73,12 +73,57 @@ export class CharacterReferenceService {
           clip.metadata.homeTeam ||
           "Court Squad";
 
-        const normKey = `${teamName.toLowerCase()}::${
-          p.jerseyNumber || p.nameOrLabel.toLowerCase()
-        }`;
+        const cleanName = p.nameOrLabel
+          .replace(/^#\d+\s*/, "")
+          .trim()
+          .toLowerCase();
+        const normKey = p.jerseyNumber
+          ? `${teamName.toLowerCase()}::#${p.jerseyNumber}`
+          : `${teamName.toLowerCase()}::${cleanName || p.nameOrLabel.toLowerCase()}`;
 
-        const existing = charMap.get(normKey);
-        if (existing && existing.confidence >= p.confidence) {
+        // Also check if an existing entry matches by canonical player name across clips
+        let existingKey = normKey;
+        let existing = charMap.get(normKey);
+        if (!existing && cleanName && cleanName.length >= 3) {
+          for (const [k, ref] of charMap.entries()) {
+            const refClean = ref.displayName
+              .replace(/^#\d+\s*/, "")
+              .trim()
+              .toLowerCase();
+            if (
+              refClean === cleanName ||
+              (p.jerseyNumber &&
+                ref.jerseyNumber === p.jerseyNumber &&
+                ref.teamName.toLowerCase() === teamName.toLowerCase())
+            ) {
+              existingKey = k;
+              existing = ref;
+              break;
+            }
+          }
+        }
+
+        const detectedAccessories = Array.from(
+          new Set([
+            ...(existing?.accessories || []),
+            ...(p.visualTraits.toLowerCase().includes("headband") ? ["headband"] : []),
+            ...(p.visualTraits.toLowerCase().includes("sleeve") ? ["compression sleeve"] : []),
+            ...(p.visualTraits.toLowerCase().includes("goggles") ? ["goggles"] : []),
+          ])
+        );
+
+        if (existing) {
+          // Merge richer traits/jersey number without creating duplicate character entries
+          charMap.set(existingKey, {
+            ...existing,
+            jerseyNumber: existing.jerseyNumber || p.jerseyNumber,
+            hairAndFaceTraits:
+              p.visualTraits.length > existing.hairAndFaceTraits.length
+                ? p.visualTraits
+                : existing.hairAndFaceTraits,
+            accessories: detectedAccessories,
+            confidence: Math.max(existing.confidence, p.confidence),
+          });
           continue;
         }
 
@@ -111,9 +156,7 @@ export class CharacterReferenceService {
             p.role === "defender"
               ? "Long wingspan, low defensive stance, explosive vertical contest"
               : "Dynamic scorer silhouette, balanced elevation, crisp follow-through",
-          accessories: p.visualTraits.toLowerCase().includes("headband")
-            ? ["headband"]
-            : [],
+          accessories: detectedAccessories,
           shootingHand: "right",
           referenceClipId: clip.clipId,
           referenceFrameId: refFrame?.frameId || `${clip.clipId}_f01`,

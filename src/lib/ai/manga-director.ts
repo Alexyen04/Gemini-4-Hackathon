@@ -40,6 +40,23 @@ const NeonRefinementSchema = z.object({
   ),
 });
 
+const JAPANESE_CHAR_RE = /[\u3040-\u30ff\u4e00-\u9faf]/;
+
+function sanitizeSfxForInputLanguage(
+  sfx: string | null | undefined,
+  allowJapanese: boolean
+): string | null {
+  if (!sfx) return null;
+  if (allowJapanese) return sfx.trim() || null;
+  // Strip any "/ カタカナ" suffix or Japanese characters when input is English-only
+  const cleaned = sfx
+    .replace(/\s*\/\s*[\u3040-\u30ff\u4e00-\u9fafー・！!？?\s]+/g, "")
+    .replace(/[\u3040-\u30ff\u4e00-\u9fafー]+/g, "")
+    .replace(/\s*\/\s*$/g, "")
+    .trim();
+  return cleaned || null;
+}
+
 // Stage 3 asks Carbon for creative choices only. IDs, rectangles, playback
 // metadata, and illustration records are deterministic and should not consume
 // model output tokens or inflate its constrained-decoding schema.
@@ -54,6 +71,7 @@ const StoryboardPlanSchema = z.object({
       cameraShot: CameraShotSchema,
       emotion: MangaEmotionSchema,
       description: z.string(),
+      characterIds: z.array(z.string()).default([]),
       visualEffects: z.array(z.string()).default([]),
       caption: z.string().nullable().default(null),
       sfx: z.string().nullable().default(null),
@@ -133,16 +151,17 @@ REQUIREMENTS:
 2. Decompose pivotal clips into multi-panel beats (target ~${
       preferences.targetPages * 4
     } total panels across ${preferences.targetPages} pages).
-3. Maintain strict chronological order and factual play outcomes. Never invent plays or fabricate real athlete press quotes.
-4. Return valid JSON matching StoryNarrativeSchema.`;
+3. Maintain strict chronological order, consistent player names/identities from CHARACTER REFERENCES, and factual play outcomes. Never invent plays or fabricate real athlete press quotes.
+4. Match the language of the input media and prompt (if English, write strictly in English with no Japanese characters).
+5. Return valid JSON matching StoryNarrativeSchema.`;
 
     const { data } = await GeminiClientService.generateStructuredJson({
-      role: "carbon",
+      role: "neon",
       systemInstruction,
       contents: [prompt],
       zodSchema: StoryNarrativeSchema,
       thinkingLevel: "LOW",
-      temperature: 0.35,
+      temperature: 0.3,
     });
 
     return data;
@@ -242,10 +261,11 @@ ${JSON.stringify(
      )}
 
 STORYBOARD GENERATION RULES:
-1. Return exactly ${preferences.targetPages} pages, each with 1-5 panels in reading order. Use a supported layoutTemplate matching its panel count (e.g. balanced_four=4, dramatic_three=3, full_splash=1).
+1. Return exactly ${preferences.targetPages} pages, each with 1-5 panels in Left-to-Right reading order. Use a supported layoutTemplate matching its panel count (e.g. balanced_four=4, dramatic_three=3, full_splash=1).
 2. Keep clip order chronological across all panels. Every sourceClipId must match a supplied clip; sourceTimestamp must lie within its duration. Never invent a play, outcome or quote.
-3. Decompose pivotal clips into distinct verified setup, anticipation, action and aftermath moments. Give concise descriptions grounded in the source analysis.
-4. Return only { "pages": [{ "layoutTemplate": "...", "panels": [{ "sourceClipId": "...", "sourceTimestamp": 0, "narrativeStage": "...", "narrativeBeat": "...", "cameraShot": "...", "emotion": "...", "description": "...", "visualEffects": [], "caption": null, "sfx": null }] }] }. Do not generate IDs, layout coordinates, illustration specs, chapters, or interactions.`;
+3. Decompose pivotal clips into distinct verified setup, anticipation, action and aftermath moments. Tag every panel's "characterIds" with the exact characterId(s) from CHARACTER REFERENCES who appear in that shot so each player's visual identity stays 100% consistent across panels.
+4. Keep ALL captions and SFX strictly in the same language as the input video/prompt (for English input, use English SFX ONLY like "SWISH!" or "BOOOOM!!"—NEVER add Japanese/katakana characters).
+5. Return only { "pages": [{ "layoutTemplate": "...", "panels": [{ "sourceClipId": "...", "sourceTimestamp": 0, "narrativeStage": "...", "narrativeBeat": "...", "cameraShot": "...", "emotion": "...", "description": "...", "characterIds": [], "visualEffects": [], "caption": null, "sfx": null }] }] }. Do not generate IDs, layout coordinates, illustration specs, chapters, or interactions.`;
 
     const clipOrder = new Map(clips.map((clip, index) => [clip.clipId, index]));
     const planSchema = StoryboardPlanSchema.superRefine((plan, ctx) => {
@@ -280,13 +300,21 @@ STORYBOARD GENERATION RULES:
         temperature: 0.2,
       });
 
+    const allowJapanese = JAPANESE_CHAR_RE.test(
+      `${preferences.userPrompt || ""} ${preferences.directorNotes || ""} ${clips
+        .map((c) => `${c.title} ${c.metadata.eventDescription || ""}`)
+        .join(" ")}`
+    );
+    const validCharIds = new Set(characters.map((c) => c.characterId));
+    const analysisByClip = new Map(analyses.map((a) => [a.clipId, a]));
+
     const rawStoryboard = MangaStoryboardSchema.parse({
       storyId,
       title: narrative.title,
       subtitle: narrative.subtitle,
       summary: narrative.summary,
       style: preferences.style,
-      readingDirection: preferences.readingDirection,
+      readingDirection: "ltr",
       chapters: narrative.chapters,
       sourceClips: clips.map((c) => c.clipId),
       pages: plan.pages.map((page, pageIdx) => MangaPageSchema.parse({
@@ -297,16 +325,54 @@ STORYBOARD GENERATION RULES:
         layoutTemplate: page.layoutTemplate,
         panels: page.panels.map((panel, panelIdx) => {
           const clip = clips[clipOrder.get(panel.sourceClipId)!];
+          const clipAnalysis = analysisByClip.get(clip.clipId);
           const closest = [...clip.keyframes].sort(
             (a, b) => Math.abs(a.timestampSec - panel.sourceTimestamp) - Math.abs(b.timestampSec - panel.sourceTimestamp)
           )[0];
+
+          // Resolve consistent characterIds across clips (model tags -> description/clip match -> fallback)
+          const modelCharIds = (panel.characterIds || []).filter((id) =>
+            validCharIds.has(id)
+          );
+          let resolvedCharIds = modelCharIds;
+          if (resolvedCharIds.length === 0) {
+            const descLower = panel.description.toLowerCase();
+            const clipPlayerNames = new Set(
+              (clipAnalysis?.mainPlayers || []).map((p) =>
+                p.nameOrLabel.replace(/^#\d+\s*/, "").trim().toLowerCase()
+              )
+            );
+            const clipPlayerJerseys = new Set(
+              (clipAnalysis?.mainPlayers || [])
+                .map((p) => p.jerseyNumber)
+                .filter(Boolean)
+            );
+            resolvedCharIds = characters
+              .filter((c) => {
+                const nameClean = c.displayName
+                  .replace(/^#\d+\s*/, "")
+                  .trim()
+                  .toLowerCase();
+                return (
+                  c.referenceClipId === clip.clipId ||
+                  (nameClean.length >= 3 &&
+                    (descLower.includes(nameClean) ||
+                      clipPlayerNames.has(nameClean))) ||
+                  (c.jerseyNumber &&
+                    (descLower.includes(`#${c.jerseyNumber}`) ||
+                      clipPlayerJerseys.has(c.jerseyNumber)))
+                );
+              })
+              .map((c) => c.characterId);
+          }
+
           return MangaPanelSchema.parse({
             panelId: `panel_p${pageIdx + 1}_${String(panelIdx + 1).padStart(2, "0")}`,
             readingOrder: panelIdx + 1,
             ...panel,
-            characterIds: characters
-              .filter((character) => character.referenceClipId === clip.clipId)
-              .map((character) => character.characterId),
+            sfx: sanitizeSfxForInputLanguage(panel.sfx, allowJapanese),
+            sfxSubtext: null,
+            characterIds: resolvedCharIds,
             size: "medium",
             layout: { x: 0, y: 0, width: 1, height: 1 },
             illustration: {
