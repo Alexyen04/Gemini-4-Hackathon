@@ -19,7 +19,6 @@ import {
 import { StorageService } from "@/lib/storage/storage-service";
 import {
   hasConfiguredApiKey,
-  mapWithConcurrency,
   resolveRoleModel,
 } from "@/lib/ai/gemini-client";
 import { ClipUnderstandingAgent } from "@/lib/ai/clip-understanding";

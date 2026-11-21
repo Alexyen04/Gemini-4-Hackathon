@@ -52,62 +52,65 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const segments = await VideoInputService.detectConsolidatedSegments(
         parentPath,
         probe.durationSec,
-        4
+        5
       );
 
-      for (let i = 0; i < segments.length; i++) {
-        const seg = segments[i];
-        const segId = `clip_${Date.now()}_s${i + 1}_${crypto
-          .randomBytes(2)
-          .toString("hex")}`;
-        const segPath = path.join(
-          StorageService.getSubDir("clips"),
-          `${segId}.mp4`
-        );
-        await VideoInputService.extractSubClip(
-          parentPath,
-          segPath,
-          seg.startSec,
-          seg.endSec
-        );
-        const segProbe = await VideoInputService.probeVideo(segPath);
-        const keyframes =
-          await KeyframeExtractionService.extractKeyframesForClip({
-            clipId: segId,
-            videoPath: segPath,
-            durationSec: segProbe.durationSec,
-            segmentStartOffsetSec: seg.startSec,
-            originalGameTimestampSec: sharedMeta.originalGameTimestampSec,
-            frameCount: 4,
-          });
+      // Slice all detected segments & extract their keyframes concurrently
+      const slicedClips = await Promise.all(
+        segments.map(async (seg, i) => {
+          const segId = `clip_${Date.now()}_s${i + 1}_${crypto
+            .randomBytes(2)
+            .toString("hex")}`;
+          const segPath = path.join(
+            StorageService.getSubDir("clips"),
+            `${segId}.mp4`
+          );
+          await VideoInputService.extractSubClip(
+            parentPath,
+            segPath,
+            seg.startSec,
+            seg.endSec
+          );
+          const segProbe = await VideoInputService.probeVideo(segPath);
+          const keyframes =
+            await KeyframeExtractionService.extractKeyframesForClip({
+              clipId: segId,
+              videoPath: segPath,
+              durationSec: segProbe.durationSec,
+              segmentStartOffsetSec: seg.startSec,
+              originalGameTimestampSec: sharedMeta.originalGameTimestampSec,
+              frameCount: 4,
+            });
 
-        const clipRecord = await StorageService.saveClip({
-          clipId: segId,
-          title: `${path.parse(file.name).name} — Highlight #${i + 1} (${seg.startSec.toFixed(
-            1
-          )}s–${seg.endSec.toFixed(1)}s)`,
-          orderIndex: nextOrder++,
-          originalFileName: file.name,
-          filePath: segPath,
-          mediaUrl: StorageService.toMediaUrl(segPath),
-          mimeType: "video/mp4",
-          durationSec: segProbe.durationSec,
-          width: segProbe.width,
-          height: segProbe.height,
-          fps: segProbe.fps,
-          isConsolidatedSegment: true,
-          parentConsolidatedId: parentId,
-          segmentStartOffsetSec: seg.startSec,
-          metadata: {
-            players: [],
-            ...sharedMeta,
-          },
-          keyframes,
-          confidence: 0.94,
-          createdAt: new Date().toISOString(),
-        });
-        createdClips.push(clipRecord);
-      }
+          return StorageService.saveClip({
+            clipId: segId,
+            title: `${path.parse(file.name).name} — Highlight #${
+              i + 1
+            } (${seg.startSec.toFixed(1)}s–${seg.endSec.toFixed(1)}s)`,
+            orderIndex: nextOrder + i,
+            originalFileName: file.name,
+            filePath: segPath,
+            mediaUrl: StorageService.toMediaUrl(segPath),
+            mimeType: "video/mp4",
+            durationSec: segProbe.durationSec,
+            width: segProbe.width,
+            height: segProbe.height,
+            fps: segProbe.fps,
+            isConsolidatedSegment: true,
+            parentConsolidatedId: parentId,
+            segmentStartOffsetSec: seg.startSec,
+            metadata: {
+              players: [],
+              ...sharedMeta,
+            },
+            keyframes,
+            confidence: 0.94,
+            createdAt: new Date().toISOString(),
+          });
+        })
+      );
+      createdClips.push(...slicedClips);
+      nextOrder += slicedClips.length;
     } else {
       // Option A: Multiple individual basketball highlight clips
       for (const file of uploadList) {
