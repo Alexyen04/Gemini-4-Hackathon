@@ -1,9 +1,65 @@
 import fs from "fs/promises";
 import { GoogleGenAI, ThinkingLevel, Part } from "@google/genai";
 import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 import { ALLOWED_GEMINI_MODELS, AllowedGeminiModel } from "@/types/manga";
 
 export type AgentModelRole = "argon" | "carbon" | "hydrogen" | "neon";
+
+const GEMINI_UNSUPPORTED_SCHEMA_KEYS = new Set([
+  "$schema",
+  "additionalProperties",
+  "default",
+  "description",
+  "examples",
+  "exclusiveMaximum",
+  "exclusiveMinimum",
+  "format",
+  "maximum",
+  "maxItems",
+  "maxLength",
+  "minimum",
+  "minItems",
+  "minLength",
+  "multipleOf",
+  "pattern",
+  "title",
+]);
+
+/**
+ * Keeps the response's object/array/type shape while removing constraints that
+ * can make Gemini's constrained decoder exceed its serving-state limit.
+ * Full enum/range/length validation still happens locally through Zod.
+ */
+export function buildGeminiServingSchema(
+  schema: Record<string, unknown>
+): Record<string, unknown> {
+  const simplify = (source: Record<string, unknown>): Record<string, unknown> => {
+    const result: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(source)) {
+      if (GEMINI_UNSUPPORTED_SCHEMA_KEYS.has(key)) continue;
+      // Enums multiply constrained-decoding states substantially. Their base
+      // JSON type is enough for serving; Zod enforces exact values afterward.
+      if (key === "enum" || key === "const") continue;
+      if (key === "properties" && child && typeof child === "object") {
+        // Property names are application data, not schema keywords. In
+        // particular, a required "title" field must never be stripped.
+        result[key] = Object.fromEntries(
+          Object.entries(child as Record<string, Record<string, unknown>>).map(
+            ([field, fieldSchema]) => [field, simplify(fieldSchema)]
+          )
+        );
+      } else if (key === "items" && child && typeof child === "object") {
+        result[key] = simplify(child as Record<string, unknown>);
+      } else {
+        result[key] = child;
+      }
+    }
+    return result;
+  };
+
+  return simplify(schema);
+}
 
 export class GeminiConfigurationError extends Error {
   constructor(message: string) {
@@ -184,8 +240,16 @@ export class GeminiClientService {
 
     const model = resolveRoleModel(role);
     const ai = this.getClient();
+    let effectiveJsonSchema = jsonSchema;
+    if (!effectiveJsonSchema) {
+      const generatedSchema = zodToJsonSchema(
+        zodSchema as z.ZodTypeAny,
+        { $refStrategy: "none" }
+      ) as Record<string, unknown>;
+      effectiveJsonSchema = buildGeminiServingSchema(generatedSchema);
+    }
 
-    const normalizedParts: Part[] = contents.map((item) =>
+    const requestParts: Part[] = contents.map((item) =>
       typeof item === "string" ? { text: item } : item
     );
 
@@ -197,16 +261,20 @@ export class GeminiClientService {
         : ThinkingLevel.MEDIUM;
 
     let lastError: unknown = null;
+    let useResponseSchema = true;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const startedAt = Date.now();
       try {
         const response = await ai.models.generateContent({
           model,
-          contents: [{ role: "user", parts: normalizedParts }],
+          contents: [{ role: "user", parts: requestParts }],
           config: {
             systemInstruction,
             responseMimeType: "application/json",
-            ...(jsonSchema ? { responseJsonSchema: jsonSchema } : {}),
+            ...(useResponseSchema
+              ? { responseJsonSchema: effectiveJsonSchema }
+              : {}),
             thinkingConfig: {
               thinkingLevel: sdkThinkingLevel,
             },
@@ -226,10 +294,12 @@ export class GeminiClientService {
 
         const parsedObj = JSON.parse(cleanedJson);
         const validated = zodSchema.parse(parsedObj);
+        console.info(`[Gemini ${role}] ${model} structured call attempt ${attempt + 1} succeeded in ${Date.now() - startedAt}ms`);
         return { data: validated, modelUsed: model };
       } catch (err) {
         lastError = err;
         const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[Gemini ${role}] ${model} structured call attempt ${attempt + 1} failed in ${Date.now() - startedAt}ms: ${msg.slice(0, 500)}`);
         // Do not retry auth or configuration errors
         if (
           err instanceof GeminiConfigurationError ||
@@ -240,6 +310,39 @@ export class GeminiClientService {
           throw err;
         }
         if (attempt < maxRetries) {
+          const schemaRejected =
+            msg.includes("schema produces a constraint that has too many states") ||
+            msg.includes("too many states for serving") ||
+            msg.includes("schema at top-level requires unspecified property");
+          if (schemaRejected && useResponseSchema) {
+            useResponseSchema = false;
+            requestParts.push({
+              text:
+                "The API could not apply constrained decoding to this large schema. " +
+                "Still return one complete JSON object with exactly the requested structure and value types. " +
+                `Use this shape-only schema as guidance: ${JSON.stringify(
+                  effectiveJsonSchema
+                )}`,
+            });
+            continue;
+          }
+
+          const validationFeedback =
+            err instanceof z.ZodError
+              ? JSON.stringify(
+                  err.issues.map(({ path, code, message }) => ({
+                    path,
+                    code,
+                    message,
+                  }))
+                )
+              : msg;
+          requestParts.push({
+            text:
+              "CORRECTION REQUIRED: The previous JSON response was invalid. " +
+              "Return a complete replacement JSON object that follows the supplied response schema exactly. " +
+              `Validation errors: ${validationFeedback}`,
+          });
           const backoffMs = 900 * Math.pow(2, attempt);
           await new Promise((r) => setTimeout(r, backoffMs));
         }

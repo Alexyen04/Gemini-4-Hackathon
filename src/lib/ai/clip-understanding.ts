@@ -106,7 +106,7 @@ Return a JSON object strictly matching this structure:
     parts.push(promptText);
 
     const { data } = await GeminiClientService.generateStructuredJson({
-      role: "hydrogen",
+      role: "argon",
       systemInstruction: CLIP_UNDERSTANDING_SYSTEM_PROMPT,
       contents: parts,
       zodSchema: ClipEventAnalysisSchema,

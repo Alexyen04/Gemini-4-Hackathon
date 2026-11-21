@@ -1,11 +1,16 @@
 import { z } from "zod";
 import {
   CharacterReference,
+  CameraShotSchema,
   ClipEventAnalysis,
   LayoutTemplateIdSchema,
+  MangaEmotionSchema,
+  MangaPanelSchema,
+  MangaPageSchema,
   MangaPreferences,
   MangaStoryboard,
   MangaStoryboardSchema,
+  NarrativeStageSchema,
   NormalizedClip,
   StoryNarrative,
   StoryNarrativeSchema,
@@ -33,6 +38,27 @@ const NeonRefinementSchema = z.object({
       ),
     })
   ),
+});
+
+// Stage 3 asks Carbon for creative choices only. IDs, rectangles, playback
+// metadata, and illustration records are deterministic and should not consume
+// model output tokens or inflate its constrained-decoding schema.
+const StoryboardPlanSchema = z.object({
+  pages: z.array(z.object({
+    layoutTemplate: LayoutTemplateIdSchema,
+    panels: z.array(z.object({
+      sourceClipId: z.string(),
+      sourceTimestamp: z.number(),
+      narrativeStage: NarrativeStageSchema,
+      narrativeBeat: z.string(),
+      cameraShot: CameraShotSchema,
+      emotion: MangaEmotionSchema,
+      description: z.string(),
+      visualEffects: z.array(z.string()).default([]),
+      caption: z.string().nullable().default(null),
+      sfx: z.string().nullable().default(null),
+    })).min(1).max(7),
+  })).min(1),
 });
 
 export class MangaDirectorAgent {
@@ -103,7 +129,7 @@ REQUIREMENTS:
 4. Return valid JSON matching StoryNarrativeSchema.`;
 
     const { data } = await GeminiClientService.generateStructuredJson({
-      role: "hydrogen",
+      role: "carbon",
       systemInstruction,
       contents: [prompt],
       zodSchema: StoryNarrativeSchema,
@@ -152,9 +178,9 @@ REQUIREMENTS:
           })
         : "Using built-in basketball-manga layout and action composition conventions.";
 
-    const prompt = `Translate this basketball narrative into a structured ${
+    const prompt = `Translate this basketball narrative into a compact ${
       preferences.targetPages
-    }-page anime/manga storyboard for story "${storyId}".
+    }-page anime/manga panel plan for story "${storyId}".
 
 ART PRESET & INDEPENDENT CONTROLS:
 - Master Art Preset: ${preferences.style}
@@ -169,46 +195,127 @@ ART PRESET & INDEPENDENT CONTROLS:
 ${referenceBlock}
 
 GLOBAL NARRATIVE:
-${JSON.stringify(narrative, null, 2)}
+${JSON.stringify({
+  title: narrative.title,
+  summary: narrative.summary,
+  climaxClipId: narrative.climaxClipId,
+  beats: narrative.beats,
+})}
 
 CHARACTER REFERENCES:
-${JSON.stringify(characters, null, 2)}
+${JSON.stringify(characters.map((c) => ({
+  characterId: c.characterId,
+  displayName: c.displayName,
+  jerseyNumber: c.jerseyNumber,
+  teamName: c.teamName,
+  uniformDescription: c.uniformDescription,
+})))}
 
-CLIPS & AVAILABLE KEYFRAMES:
+VERIFIED CLIPS & BEST MOMENTS:
 ${JSON.stringify(
-      clips.map((c) => ({
-        clipId: c.clipId,
-        durationSec: c.durationSec,
-        metadata: c.metadata,
-        keyframes: c.keyframes.map((k) => ({
-          frameId: k.frameId,
-          timestampSec: k.timestampSec,
-        })),
-        analysis: analyses.find((a) => a.clipId === c.clipId),
-      })),
-      null,
-      2
-    )}
+       clips.map((c) => ({
+         clipId: c.clipId,
+         durationSec: c.durationSec,
+         metadata: c.metadata,
+         analysis: (() => {
+           const a = analyses.find((item) => item.clipId === c.clipId);
+           return a && {
+             actionSummary: a.actionSummary,
+             actionSequence: a.actionSequence,
+             outcomeVerified: a.outcomeVerified,
+             mainPlayers: a.mainPlayers,
+             bestMoments: a.bestMoments,
+             uncertainties: a.uncertainties,
+           };
+         })(),
+       })),
+     )}
 
 STORYBOARD GENERATION RULES:
-1. Create ${preferences.targetPages} pages using supported layout templates ("balanced_four", "balanced_five", "dramatic_three", "hero_action_four", "climax_showcase_three", "vertical_strip_four", "full_splash").
-2. Match panel count on each page to the chosen template. If storytellingFocus="emotion_focused", include expressive eye/reaction closeups; if storytellingFocus="action_focused" or actionIntensity="explosive", emphasize low-angle dunks, blocks, foreshortened drives, and hero/dramatic layouts.
-3. Decompose climax clips into multiple suspenseful beats with distinct clip-local "sourceTimestamp" values inside [0, durationSec].
-4. Set "illustration.style"="${preferences.style}" and "illustration.colorTreatment"="${preferences.colorTreatment}". Write highly specific, anime/manga reference-guided "illustration.prompt" instructions grounded in the real play!
-5. Never copy reference manga character designs or fabricate real-world athlete press quotes.
+1. Return exactly ${preferences.targetPages} pages, each with 1-5 panels in reading order. Use a supported layoutTemplate matching its panel count (e.g. balanced_four=4, dramatic_three=3, full_splash=1).
+2. Keep clip order chronological across all panels. Every sourceClipId must match a supplied clip; sourceTimestamp must lie within its duration. Never invent a play, outcome or quote.
+3. Decompose pivotal clips into distinct verified setup, anticipation, action and aftermath moments. Give concise descriptions grounded in the source analysis.
+4. Return only { "pages": [{ "layoutTemplate": "...", "panels": [{ "sourceClipId": "...", "sourceTimestamp": 0, "narrativeStage": "...", "narrativeBeat": "...", "cameraShot": "...", "emotion": "...", "description": "...", "visualEffects": [], "caption": null, "sfx": null }] }] }. Do not generate IDs, layout coordinates, illustration specs, chapters, or interactions.`;
 
-Return valid JSON matching MangaStoryboardSchema.`;
-
-    const { data: rawStoryboard } =
+    const clipOrder = new Map(clips.map((clip, index) => [clip.clipId, index]));
+    const planSchema = StoryboardPlanSchema.superRefine((plan, ctx) => {
+      if (plan.pages.length !== preferences.targetPages) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Expected exactly ${preferences.targetPages} pages` });
+      }
+      let previousClipIndex = -1;
+      for (const [pageIndex, page] of plan.pages.entries()) {
+        if (PageCompositionService.listTemplates().find((t) => t.id === page.layoutTemplate)?.panelCount !== page.panels.length) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["pages", pageIndex, "panels"], message: "Panel count must match layout template" });
+        }
+        for (const [panelIndex, panel] of page.panels.entries()) {
+          const index = clipOrder.get(panel.sourceClipId);
+          const clip = index === undefined ? undefined : clips[index];
+          if (!clip || panel.sourceTimestamp < 0 || panel.sourceTimestamp > clip.durationSec) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["pages", pageIndex, "panels", panelIndex], message: "Unknown clip or timestamp outside clip duration" });
+          } else if (index! < previousClipIndex) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["pages", pageIndex, "panels", panelIndex], message: "Clip order must be chronological" });
+          } else {
+            previousClipIndex = index!;
+          }
+        }
+      }
+    });
+    const { data: plan } =
       await GeminiClientService.generateStructuredJson({
-        role: "hydrogen",
+        role: "carbon",
         systemInstruction,
         contents: [prompt],
-        zodSchema: MangaStoryboardSchema,
+        zodSchema: planSchema,
         thinkingLevel: "LOW",
-        temperature: 0.35,
+        temperature: 0.2,
       });
 
+    const rawStoryboard = MangaStoryboardSchema.parse({
+      storyId,
+      title: narrative.title,
+      subtitle: narrative.subtitle,
+      summary: narrative.summary,
+      style: preferences.style,
+      readingDirection: preferences.readingDirection,
+      chapters: narrative.chapters,
+      sourceClips: clips.map((c) => c.clipId),
+      pages: plan.pages.map((page, pageIdx) => MangaPageSchema.parse({
+        pageId: `page_${pageIdx + 1}`,
+        chapterId: narrative.chapters[0].chapterId,
+        pageNumber: pageIdx + 1,
+        pageType: page.layoutTemplate === "full_splash" ? "splash" : "normal",
+        layoutTemplate: page.layoutTemplate,
+        panels: page.panels.map((panel, panelIdx) => {
+          const clip = clips[clipOrder.get(panel.sourceClipId)!];
+          const closest = [...clip.keyframes].sort(
+            (a, b) => Math.abs(a.timestampSec - panel.sourceTimestamp) - Math.abs(b.timestampSec - panel.sourceTimestamp)
+          )[0];
+          return MangaPanelSchema.parse({
+            panelId: `panel_p${pageIdx + 1}_${String(panelIdx + 1).padStart(2, "0")}`,
+            readingOrder: panelIdx + 1,
+            ...panel,
+            characterIds: characters
+              .filter((character) => character.referenceClipId === clip.clipId)
+              .map((character) => character.characterId),
+            size: "medium",
+            layout: { x: 0, y: 0, width: 1, height: 1 },
+            illustration: {
+              renderer: "hybrid",
+              referenceFrameIds: closest ? [closest.frameId] : [],
+              style: preferences.style,
+              colorTreatment: preferences.colorTreatment,
+              prompt: panel.description,
+            },
+            interaction: {
+              type: "play_source_clip",
+              clipId: panel.sourceClipId,
+              timestamp: panel.sourceTimestamp,
+              originalGameClock: clip.metadata.gameClock ?? null,
+            },
+          });
+        }),
+      })),
+    });
     let normalized = StoryboardValidator.normalizeAndRepairStoryboard(
       rawStoryboard,
       clips

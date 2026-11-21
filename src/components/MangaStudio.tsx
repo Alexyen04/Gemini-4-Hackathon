@@ -383,7 +383,7 @@ export const MangaStudio: React.FC = () => {
               </label>
               <input
                 type="range"
-                min={2}
+                min={1}
                 max={5}
                 value={preferences.targetPages}
                 onChange={(e) =>
