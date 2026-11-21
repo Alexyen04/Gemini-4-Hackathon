@@ -137,9 +137,10 @@ RULES:
 1. Return an object { "specs": [ ... ] } containing EXACTLY ${
       page.panels.length
     } specs matching every panelId above.
-2. Set accurate focalX/focalY [0.05..0.95] on each panel's attached keyframe so athletes/rim stay centered.
-3. Keep customSvgOverlay concise and safe (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">...</svg> using only safe vector primitives).
-4. Ground all characters and actions strictly in the basketball keyframes; never copy reference manga characters.`;
+2. Set accurate focalX/focalY [0.05..0.95] on each panel's attached keyframe so the primary subject(s) and action stay cleanly framed.
+3. Your artisticPrompt directly guides an image-to-image manga illustrator (gemini-nano-banana-2.1). Reason about figure-ground clarity for each shot: translate real athletes into cohesive hand-drawn anime/manga characters (preserving pose, likeness, jersey, and expression), and choose backgroundMode + visual direction so busy backgrounds or crowds are simplified, softened, or dropped to clean negative space whenever they compete with foreground contrast.
+4. Set customSvgOverlay to null unless a minimal, non-obstructive edge accent is genuinely needed (never place lines or arcs across faces or foreground silhouettes).
+5. Ground all characters and actions strictly in the basketball keyframes; never copy reference manga characters.`;
 
     parts.push(prompt);
 
@@ -308,6 +309,11 @@ ${
 
 ACTIVE CHARACTER & UNIFORM REFERENCES:
 ${JSON.stringify(activeChars, null, 2)}
+
+ART DIRECTION PRINCIPLES:
+- Your artisticPrompt directly drives an image-to-image manga illustrator (gemini-nano-banana-2.1). Write clear direction that translates the real athletes into cohesive hand-drawn anime/manga characters (preserving likeness, jersey, pose, and emotion) while maintaining strong figure-ground contrast.
+- Choose backgroundMode thoughtfully so busy arena crowds, signage, or clutter are simplified or dropped to clean negative space whenever they compete with the foreground subject.
+- Prefer customSvgOverlay: null unless a minimal non-obstructive edge accent is genuinely needed (never cross faces or primary silhouettes).
 
 Return valid JSON matching CarbonIllustrationSpecSchema.`;
 

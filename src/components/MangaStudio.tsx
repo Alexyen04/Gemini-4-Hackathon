@@ -49,6 +49,8 @@ const STYLE_CARDS: Array<{
 
 export const MangaStudio: React.FC = () => {
   const {
+    rawVideos,
+    selectedRawVideoPath,
     clips,
     mode,
     setMode,
@@ -62,6 +64,9 @@ export const MangaStudio: React.FC = () => {
 
   const apiKeyReady = Boolean(systemStatus?.apiKeyConfigured);
   const refStatus = systemStatus?.references;
+  const selectedRawVideo =
+    rawVideos.find((v) => v.filePath === selectedRawVideoPath) || null;
+  const hasInputReady = Boolean(selectedRawVideoPath) || clips.length > 0;
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-12 gap-7">
@@ -413,26 +418,10 @@ export const MangaStudio: React.FC = () => {
             </label>
           )}
 
-          {/* Optional Director Instructions */}
-          <div>
-            <label className="block font-mono text-[11px] font-bold uppercase mb-1">
-              Director Notes (Optional)
-            </label>
-            <textarea
-              rows={2}
-              value={preferences.directorNotes || ""}
-              onChange={(e) =>
-                updatePreferences({ directorNotes: e.target.value })
-              }
-              placeholder="e.g., Emphasize intense anime eye closeups before the buzzer-beater..."
-              className="w-full border-2 border-ink-950 bg-paper-100 px-3 py-2 text-xs"
-            />
-          </div>
-
           {/* Prominent Generate Manga CTA */}
           <button
             type="button"
-            disabled={clips.length === 0 || (mode === "real" && !apiKeyReady)}
+            disabled={!hasInputReady || (mode === "real" && !apiKeyReady)}
             onClick={() => void startGeneration()}
             className="w-full bg-crimson-500 hover:bg-crimson-600 disabled:bg-ink-600 text-white font-display text-2xl uppercase tracking-wider py-4 px-6 border-[3px] border-ink-950 shadow-manga flex items-center justify-center gap-3 transition-transform active:translate-x-0.5 active:translate-y-0.5"
           >
@@ -441,7 +430,9 @@ export const MangaStudio: React.FC = () => {
             ) : (
               <Wand2 className="w-6 h-6" />
             )}
-            Generate Basketball Manga ({clips.length} Clips)
+            {selectedRawVideo
+              ? "Generate Basketball Manga"
+              : `Generate Basketball Manga (${clips.length} Clips)`}
           </button>
         </div>
       </div>

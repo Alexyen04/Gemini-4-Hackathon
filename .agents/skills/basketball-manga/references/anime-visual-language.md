@@ -36,3 +36,7 @@ Every panel specification and rendering pass MUST actively apply these four orth
    - `action_focused`: Prioritize kinetic full-body drives, airborne contests, ball trajectories, and wide/low-angle action panels.
    - `balanced`: Alternate kinetic basketball plays with sharp facial reactions and tactical tension.
    - `emotion_focused`: Emphasize eyes, sweat, breathing, internal monologues, bench/crowd tension, and dramatic aftermath closeups.
+
+## 3. Anime Character Translation & Visual Restraint
+- **Hand-Drawn Character Craft (Not Photo Filters)**: Translate real broadcast athletes into cohesive illustrated manga/anime characters—distinctive hair silhouette, sharp expressive eyes, clean jawline/anatomy, and stylized jersey folds—while preserving their real likeness, pose, uniform, and jersey number. Avoid raw photographic grain or coarse halftone dots across faces.
+- **Deliberate Contrast Hierarchy**: Reserve crisp dark ink and tight detail for the focal player(s) and basketball; let secondary figures and stadium backgrounds fall back into lighter tones, clean negative space, or minimal linework so every panel reads effortlessly at a glance.

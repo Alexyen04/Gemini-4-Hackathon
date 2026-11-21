@@ -31,13 +31,42 @@ import { HybridMangaRenderer } from "@/lib/manga/hybrid-renderer";
 import { PageCompositionService } from "@/lib/manga/layout-engine";
 import { MangaReferenceAnalyzer } from "@/lib/manga/references/reference-analyzer";
 import { ReferenceIndexStore } from "@/lib/manga/references/reference-index";
+import { PythonIngestBridge } from "@/lib/ingest/python-ingest-bridge";
+
+export interface RawVideoIngestRequest {
+  rawVideoPath: string;
+  userPrompt: string;
+  reuseIngestCache?: boolean;
+  cachedHandoffPath?: string;
+}
 
 export class MangaJobManager {
-  static createInitialStages(mode: PipelineMode): PipelineStageStatus[] {
+  static createInitialStages(
+    mode: PipelineMode,
+    includeVideoIngest = false
+  ): PipelineStageStatus[] {
     const tag = (role: "argon" | "carbon" | "hydrogen" | "neon") =>
       mode === "real" ? resolveRoleModel(role) : "demo-deterministic";
 
+    const ingestStages: PipelineStageStatus[] = includeVideoIngest
+      ? [
+          {
+            id: "video_ingest",
+            label: "Stage 0A. Full-Game Video Scouting, Decisions Ranking & Replay Pairing",
+            model:
+              mode === "real"
+                ? "gemini-4-hydrogen + gemini-decision-1"
+                : "python-handoff",
+            status: "pending",
+            detail: "Waiting to scout raw basketball video & pair zoomed replay angles",
+            startedAt: null,
+            completedAt: null,
+          },
+        ]
+      : [];
+
     return [
+      ...ingestStages,
       {
         id: "reference_analysis",
         label: "Stage 0. Manga Visual Reference Analysis",
@@ -85,10 +114,16 @@ export class MangaJobManager {
       },
       {
         id: "carbon_illustration",
-        label: "Stage 4. Carbon Concurrent Panel Illustration",
-        model: tag("carbon"),
+        label: "Stage 4. Carbon + Nano Banana Panel Illustration",
+        model:
+          mode === "real" && process.env.MANGA_DISABLE_NANO_BANANA !== "true"
+            ? `${tag("carbon")} + gemini-nano-banana-2.1`
+            : tag("carbon"),
         status: "pending",
-        detail: "Waiting to generate all pages concurrently via Gemini 4 Carbon",
+        detail:
+          mode === "real" && process.env.MANGA_DISABLE_NANO_BANANA !== "true"
+            ? "Waiting to direct specs via Carbon & illustrate panels via Nano Banana 2.1"
+            : "Waiting to generate all pages concurrently via Gemini 4 Carbon",
         startedAt: null,
         completedAt: null,
       },
@@ -149,12 +184,25 @@ export class MangaJobManager {
   }
 
   static async startGenerationJob(params: {
-    clipIds: string[];
+    rawVideoPath?: string;
+    userPrompt?: string;
+    reuseIngestCache?: boolean;
+    cachedHandoffPath?: string;
+    clipIds?: string[];
     preferences: MangaPreferences;
     mode: PipelineMode;
     resumeJobId?: string;
   }): Promise<GenerationJob> {
-    const { clipIds, preferences, mode, resumeJobId } = params;
+    const {
+      rawVideoPath,
+      userPrompt = "",
+      reuseIngestCache = true,
+      cachedHandoffPath,
+      clipIds = [],
+      preferences,
+      mode,
+      resumeJobId,
+    } = params;
 
     if (mode === "real" && !hasConfiguredApiKey()) {
       throw new Error(
@@ -162,15 +210,29 @@ export class MangaJobManager {
       );
     }
 
+    let rawIngestReq: RawVideoIngestRequest | undefined;
     const clips: NormalizedClip[] = [];
-    for (const id of clipIds) {
-      const c = await StorageService.getClip(id);
-      if (c) clips.push(c);
-    }
-    if (clips.length === 0) {
-      throw new Error(
-        "At least one valid basketball highlight clip is required."
+
+    if (rawVideoPath) {
+      const validatedPath = await PythonIngestBridge.validateRawVideoPath(
+        rawVideoPath
       );
+      rawIngestReq = {
+        rawVideoPath: validatedPath,
+        userPrompt,
+        reuseIngestCache,
+        cachedHandoffPath,
+      };
+    } else {
+      for (const id of clipIds) {
+        const c = await StorageService.getClip(id);
+        if (c) clips.push(c);
+      }
+      if (clips.length === 0) {
+        throw new Error(
+          "Provide a raw basketball video or at least one valid highlight clip."
+        );
+      }
     }
 
     let job: GenerationJob;
@@ -189,14 +251,15 @@ export class MangaJobManager {
         .randomBytes(3)
         .toString("hex")}`;
       const now = new Date().toISOString();
+      const useVideoIngest = Boolean(rawIngestReq);
 
       job = await StorageService.saveJob({
         jobId,
         storyId,
         mode,
         status: "running",
-        currentStage: "reference_analysis",
-        stages: this.createInitialStages(mode),
+        currentStage: useVideoIngest ? "video_ingest" : "reference_analysis",
+        stages: this.createInitialStages(mode, useVideoIngest),
         completedPanels: 0,
         totalPanels: 0,
         livePanelPreviews: [],
@@ -206,25 +269,81 @@ export class MangaJobManager {
       });
     }
 
-    void this.executePipeline(job, clips, preferences).catch(async (err) => {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      job.status = "failed";
-      job.error = errMsg;
-      await this.updateStage(job, job.currentStage, {
-        status: "failed",
-        detail: errMsg,
-      });
-    });
+    void this.executePipeline(job, clips, preferences, rawIngestReq).catch(
+      async (err) => {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        job.status = "failed";
+        job.error = errMsg;
+        await this.updateStage(job, job.currentStage, {
+          status: "failed",
+          detail: errMsg,
+        });
+      }
+    );
 
     return job;
   }
 
   static async executePipeline(
     job: GenerationJob,
-    clips: NormalizedClip[],
-    preferences: MangaPreferences
+    initialClips: NormalizedClip[],
+    preferences: MangaPreferences,
+    rawIngestReq?: RawVideoIngestRequest
   ): Promise<MangaStoryProject> {
     const isReal = job.mode === "real";
+    let clips = initialClips;
+    let upstreamHandoffContext: string | undefined;
+
+    // ---- Stage 0A (Optional): Python Raw Video Ingest -> Handoff Bridge ----
+    if (rawIngestReq) {
+      job = await this.updateStage(job, "video_ingest", {
+        status: "running",
+        detail: "Starting Python Gemini 4 + Decisions API video ingest & ranking...",
+      });
+
+      const { handoff, cacheHit } = await PythonIngestBridge.runOrLoadPythonHandoff({
+        rawVideoPath: rawIngestReq.rawVideoPath,
+        userPrompt: rawIngestReq.userPrompt,
+        targetPages: preferences.targetPages,
+        mode: job.mode,
+        reuseCache: rawIngestReq.reuseIngestCache,
+        cachedHandoffPath: rawIngestReq.cachedHandoffPath,
+        onProgress: async (detailLine) => {
+          job = await this.updateStage(job, "video_ingest", {
+            status: "running",
+            detail: detailLine,
+          });
+        },
+      });
+
+      const converted = await PythonIngestBridge.convertHandoffToMangaInputs({
+        handoff,
+        targetPages: preferences.targetPages,
+      });
+
+      clips = converted.clips;
+      upstreamHandoffContext = converted.upstreamHandoffContext;
+
+      if (clips.length === 0) {
+        throw new Error(
+          "Upstream Python ingest completed, but no playable candidate clips were staged."
+        );
+      }
+
+      // Pre-populate Stage 1 checkpoint with verified Decisions-API beat analyses
+      await StorageService.saveCheckpoint(
+        job.jobId,
+        "clip_analysis",
+        converted.analyses
+      );
+
+      job = await this.updateStage(job, "video_ingest", {
+        status: "completed",
+        detail: `${cacheHit ? "Loaded cached handoff" : "Scouted & ranked video"} → staged ${
+          clips.length
+        } live & zoomed-replay clips`,
+      });
+    }
 
     // Ensure job stages include `reference_analysis` if caller constructed minimal stages
     if (!job.stages.some((s) => s.id === "reference_analysis")) {
@@ -340,6 +459,7 @@ export class MangaJobManager {
             characters,
             preferences,
             styleProfile,
+            upstreamHandoffContext,
           })
         : DemoPipelineSynthesizer.buildDemoNarrative(
             clips,
@@ -382,6 +502,7 @@ export class MangaJobManager {
             preferences,
             styleProfile,
             referenceIndex,
+            upstreamHandoffContext,
           })
         : DemoPipelineSynthesizer.buildDemoStoryboard({
             storyId: job.storyId,
@@ -409,10 +530,14 @@ export class MangaJobManager {
       detail: `Composed ${storyboard.pages.length} pages (${flatPanels.length} panels)`,
     });
 
-    // ---- Stage 4: Single-Wave Concurrent Per-Page Carbon Illustration Engine ----
+    // ---- Stage 4: Single-Wave Concurrent Per-Page Carbon + Nano Banana 2.1 Illustration Engine ----
+    const useNanoBanana =
+      isReal && process.env.MANGA_DISABLE_NANO_BANANA !== "true";
     job = await this.updateStage(job, "carbon_illustration", {
       status: "running",
-      detail: `Generating all ${storyboard.pages.length} pages (${flatPanels.length} panels) concurrently in 1 wave...`,
+      detail: useNanoBanana
+        ? `Illustrating ${storyboard.pages.length} pages (${flatPanels.length} panels) via Carbon + Nano Banana 2.1...`
+        : `Generating all ${storyboard.pages.length} pages (${flatPanels.length} panels) concurrently in 1 wave...`,
     });
 
     const clipMap = new Map(clips.map((c) => [c.clipId, c]));
@@ -462,6 +587,7 @@ export class MangaJobManager {
               spec,
               colorTreatment: preferences.colorTreatment,
               actionIntensity: preferences.actionIntensity,
+              useNanoBanana,
             });
 
             const updatedPanel: MangaPanel = {
@@ -610,6 +736,7 @@ export class MangaJobManager {
             colorTreatment: preferences.colorTreatment,
             actionIntensity: preferences.actionIntensity,
             regenerationSeed: 2,
+            useNanoBanana,
           });
           p.panels[targetIdx] = {
             ...targetPanel,
@@ -795,6 +922,8 @@ export class MangaJobManager {
       colorTreatment: activeColor,
       actionIntensity: activeIntensity,
       regenerationSeed: nextGenCount,
+      useNanoBanana:
+        useReal && process.env.MANGA_DISABLE_NANO_BANANA !== "true",
     });
 
     const cacheBustedUrl = `${rendered.assetUrl}?v=${Date.now()}`;

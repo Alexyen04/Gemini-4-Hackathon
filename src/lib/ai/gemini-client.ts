@@ -94,9 +94,16 @@ export function resolveRoleModel(role: AgentModelRole): AllowedGeminiModel {
   return assertAllowedGeminiModel(map[role]);
 }
 
+export function getConfiguredApiKey(): string | null {
+  const key = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "").trim();
+  if (!key || key === "your_gemini_api_key_here") {
+    return null;
+  }
+  return key;
+}
+
 export function hasConfiguredApiKey(): boolean {
-  const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
-  return Boolean(key.trim() && key.trim() !== "your_gemini_api_key_here");
+  return Boolean(getConfiguredApiKey());
 }
 
 /**

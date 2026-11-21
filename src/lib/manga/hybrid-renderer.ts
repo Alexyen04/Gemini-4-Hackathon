@@ -12,6 +12,7 @@ import {
 } from "@/types/manga";
 import { StorageService } from "@/lib/storage/storage-service";
 import { KeyframeExtractionService } from "@/lib/video/keyframes";
+import { NanoBananaMangaIllustrator } from "@/lib/ai/nano-banana-illustrator";
 import { MangaImageProcessor } from "./image-processing";
 import { SVGIllustrationRenderer } from "./svg-renderer";
 
@@ -39,6 +40,7 @@ export class HybridMangaRenderer {
     colorTreatment?: ColorTreatment;
     actionIntensity?: ActionIntensity;
     regenerationSeed?: number;
+    useNanoBanana?: boolean;
   }): Promise<{
     assetFilePath: string;
     assetUrl: string;
@@ -56,6 +58,7 @@ export class HybridMangaRenderer {
         "traditional_monochrome",
       actionIntensity = "dramatic",
       regenerationSeed = 0,
+      useNanoBanana = false,
     } = params;
 
     await StorageService.ensureDirectories();
@@ -110,45 +113,66 @@ export class HybridMangaRenderer {
         .png({ compressionLevel: 6 })
         .toFile(outPngPath);
     } else {
-      const chosenRaster = await MangaImageProcessor.stylizeKeyframeToManga({
-        sourceImagePath: keyframe.filePath,
-        targetWidth: targetW,
-        targetHeight: targetH,
-        style,
-        spec,
-        colorTreatment,
-        actionIntensity,
-      });
+      let nanoBananaBuffer: Buffer | null = null;
+      if (useNanoBanana) {
+        nanoBananaBuffer =
+          await NanoBananaMangaIllustrator.renderMangaPanelImage({
+            sourceImagePath: keyframe.filePath,
+            targetWidth: targetW,
+            targetHeight: targetH,
+            panel,
+            style,
+            spec,
+            colorTreatment,
+            actionIntensity,
+          });
+      }
 
-      if (spec.renderer === "frame_guided") {
-        await fs.writeFile(outPngPath, chosenRaster.pngBuffer);
+      if (nanoBananaBuffer) {
+        // Nano Banana 2.1 renders native ink linework, figure-ground separation,
+        // and kinetic lines directly—skip noisy SVG overlays so faces stay clean.
+        await fs.writeFile(outPngPath, nanoBananaBuffer);
       } else {
-        const overlaySvg = SVGIllustrationRenderer.buildEffectsOverlaySvg({
-          width: targetW,
-          height: targetH,
-          spec,
+        const chosenRaster = await MangaImageProcessor.stylizeKeyframeToManga({
+          sourceImagePath: keyframe.filePath,
+          targetWidth: targetW,
+          targetHeight: targetH,
           style,
+          spec,
           colorTreatment,
           actionIntensity,
-          visualEffects: panel.visualEffects,
-          seedSalt: regenerationSeed,
         });
 
-        const svgPath = path.join(
-          storyPanelDir,
-          `${panel.panelId}${versionSuffix}_overlay.svg`
-        );
-        await fs.writeFile(svgPath, overlaySvg, "utf-8");
-        svgOverlayUrl = StorageService.toMediaUrl(svgPath);
+        if (spec.renderer === "frame_guided") {
+          await fs.writeFile(outPngPath, chosenRaster.pngBuffer);
+        } else {
+          const overlaySvg = SVGIllustrationRenderer.buildEffectsOverlaySvg({
+            width: targetW,
+            height: targetH,
+            spec,
+            style,
+            colorTreatment,
+            actionIntensity,
+            visualEffects: panel.visualEffects,
+            seedSalt: regenerationSeed,
+          });
 
-        const overlayBuffer = await sharp(Buffer.from(overlaySvg))
-          .png()
-          .toBuffer();
+          const svgPath = path.join(
+            storyPanelDir,
+            `${panel.panelId}${versionSuffix}_overlay.svg`
+          );
+          await fs.writeFile(svgPath, overlaySvg, "utf-8");
+          svgOverlayUrl = StorageService.toMediaUrl(svgPath);
 
-        await sharp(chosenRaster.pngBuffer)
-          .composite([{ input: overlayBuffer, top: 0, left: 0 }])
-          .png({ compressionLevel: 6 })
-          .toFile(outPngPath);
+          const overlayBuffer = await sharp(Buffer.from(overlaySvg))
+            .png()
+            .toBuffer();
+
+          await sharp(chosenRaster.pngBuffer)
+            .composite([{ input: overlayBuffer, top: 0, left: 0 }])
+            .png({ compressionLevel: 6 })
+            .toFile(outPngPath);
+        }
       }
     }
 

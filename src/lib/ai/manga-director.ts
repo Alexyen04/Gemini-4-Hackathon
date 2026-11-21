@@ -72,8 +72,16 @@ export class MangaDirectorAgent {
     characters: CharacterReference[];
     preferences: MangaPreferences;
     styleProfile?: MangaVisualStyleProfile;
+    upstreamHandoffContext?: string;
   }): Promise<StoryNarrative> {
-    const { clips, analyses, characters, preferences, styleProfile } = params;
+    const {
+      clips,
+      analyses,
+      characters,
+      preferences,
+      styleProfile,
+      upstreamHandoffContext,
+    } = params;
     const systemInstruction =
       await MangaSkillLoader.getNarrativeSystemInstruction();
 
@@ -102,7 +110,7 @@ Action Intensity: ${preferences.actionIntensity.toUpperCase()}
 
 ${pacingNotes}
 
-CHARACTER REFERENCES:
+${upstreamHandoffContext ? `${upstreamHandoffContext}\n` : ""}CHARACTER REFERENCES:
 ${JSON.stringify(characters, null, 2)}
 
 VERIFIED CLIP EVENT ANALYSES (from Gemini 4 Argon):
@@ -154,6 +162,7 @@ REQUIREMENTS:
     preferences: MangaPreferences;
     styleProfile?: MangaVisualStyleProfile;
     referenceIndex?: MangaReferenceIndex;
+    upstreamHandoffContext?: string;
   }): Promise<MangaStoryboard> {
     const {
       storyId,
@@ -164,6 +173,7 @@ REQUIREMENTS:
       preferences,
       styleProfile,
       referenceIndex,
+      upstreamHandoffContext,
     } = params;
     const systemInstruction =
       await MangaSkillLoader.getStoryboardSystemInstruction();
@@ -194,7 +204,7 @@ ART PRESET & INDEPENDENT CONTROLS:
 
 ${referenceBlock}
 
-GLOBAL NARRATIVE:
+${upstreamHandoffContext ? `${upstreamHandoffContext}\n` : ""}GLOBAL NARRATIVE:
 ${JSON.stringify({
   title: narrative.title,
   summary: narrative.summary,

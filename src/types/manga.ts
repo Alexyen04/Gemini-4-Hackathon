@@ -173,8 +173,35 @@ export const MangaPreferencesSchema = z.object({
   visualEffectsIntensity: z.number().min(1).max(10).default(8),
   useLayoutOptimizerNeon: z.boolean().default(false),
   directorNotes: z.string().max(1000).optional().default(""),
+  userPrompt: z.string().max(1500).optional(),
 });
 export type MangaPreferences = z.infer<typeof MangaPreferencesSchema>;
+
+export const CachedHandoffSummarySchema = z.object({
+  jobId: z.string(),
+  handoffPath: z.string(),
+  userFocus: z.string(),
+  selectedPoolCount: z.number().int().nonnegative(),
+  attachedReplayCount: z.number().int().nonnegative().default(0),
+  updatedAt: z.string(),
+});
+export type CachedHandoffSummary = z.infer<typeof CachedHandoffSummarySchema>;
+
+export const RawVideoRecordSchema = z.object({
+  videoId: z.string(),
+  fileName: z.string(),
+  title: z.string(),
+  filePath: z.string(),
+  mediaUrl: z.string(),
+  durationSec: z.number().positive(),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  fps: z.number().positive(),
+  sizeBytes: z.number().nonnegative(),
+  cachedHandoffs: z.array(CachedHandoffSummarySchema).default([]),
+  createdAt: z.string(),
+});
+export type RawVideoRecord = z.infer<typeof RawVideoRecordSchema>;
 
 // ============================================================================
 // 3. Stage 1: Video Clips & Keyframe Schemas
@@ -544,6 +571,7 @@ export type QualityReviewReport = z.infer<typeof QualityReviewReportSchema>;
 // ============================================================================
 
 export const PipelineStageIdSchema = z.enum([
+  "video_ingest",
   "reference_analysis",
   "clip_analysis",
   "character_references",

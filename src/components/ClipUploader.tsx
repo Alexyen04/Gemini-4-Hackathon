@@ -2,39 +2,63 @@
 
 import React, { useRef, useState } from "react";
 import {
-  ArrowDown,
-  ArrowUp,
-  ChevronDown,
-  ChevronUp,
+  CheckCircle2,
+  Database,
   Film,
   Loader2,
+  MessageSquareText,
   Sparkles,
   Trash2,
   Upload,
 } from "lucide-react";
-import { NormalizedClip } from "@/types/manga";
 import { useMangaStore } from "@/store/manga-store";
+
+function formatDuration(sec: number): string {
+  if (sec >= 60) {
+    const m = Math.floor(sec / 60);
+    const s = Math.round(sec % 60);
+    return `${m}m ${String(s).padStart(2, "0")}s`;
+  }
+  return `${sec.toFixed(1)}s`;
+}
+
+function formatSizeMb(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+const EXAMPLE_PROMPTS = [
+  "Emphasize the last steal into game-winning 3-pointer",
+  "Follow the second-half comeback from a huge deficit",
+  "Focus on clutch defensive stops and high-pressure free throws",
+];
 
 export const ClipUploader: React.FC = () => {
   const {
-    clips,
+    rawVideos,
+    selectedRawVideoPath,
+    setSelectedRawVideoPath,
+    userPrompt,
+    setUserPrompt,
+    reuseIngestCache,
+    setReuseIngestCache,
+    selectedCachedHandoffPath,
+    setSelectedCachedHandoffPath,
+    uploadRawVideo,
+    removeRawVideo,
+    loadSampleHighlights,
     isUploading,
     isLoadingClips,
-    uploadVideoFiles,
-    loadSampleHighlights,
-    reorderClip,
-    removeClip,
-    updateClipDetails,
   } = useMangaStore();
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [consolidatedMode, setConsolidatedMode] = useState(false);
-  const [expandedClipId, setExpandedClipId] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
+
+  const selectedVideo =
+    rawVideos.find((v) => v.filePath === selectedRawVideoPath) || null;
 
   const handleFilesSelected = async (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
-    await uploadVideoFiles(Array.from(fileList), consolidatedMode);
+    await uploadRawVideo(fileList[0]);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -42,7 +66,7 @@ export const ClipUploader: React.FC = () => {
 
   return (
     <div className="space-y-5">
-      {/* Upload Dropzone & Instant Sample Highlights Action */}
+      {/* Step 1: Raw Basketball Video Upload / Selection */}
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -61,10 +85,10 @@ export const ClipUploader: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b-2 border-ink-950/15">
           <div>
             <span className="font-mono text-[11px] font-bold uppercase tracking-widest text-crimson-600">
-              Stage 1 • Highlight Ingestion
+              Stage 1 • Raw Game Video Input
             </span>
             <h2 className="font-display text-2xl uppercase tracking-wide text-ink-950">
-              Basketball Highlight Clips
+              Basketball Game Video
             </h2>
           </div>
 
@@ -72,40 +96,21 @@ export const ClipUploader: React.FC = () => {
             type="button"
             disabled={isLoadingClips || isUploading}
             onClick={() => void loadSampleHighlights()}
-            className="inline-flex items-center justify-center gap-2 bg-ink-950 text-paper-50 font-mono text-xs font-bold uppercase px-4 py-2.5 border-2 border-ink-950 shadow-manga-sm hover:bg-crimson-500 transition-colors disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 bg-paper-100 text-ink-950 font-mono text-[11px] font-bold uppercase px-3.5 py-2 border-2 border-ink-950 hover:bg-ink-950 hover:text-paper-50 transition-colors disabled:opacity-50"
           >
             {isLoadingClips ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : (
-              <Sparkles className="w-4 h-4 text-court-400" />
+              <Sparkles className="w-3.5 h-3.5 text-crimson-600" />
             )}
-            Load 5 Sample Highlights
+            Synthetic Demo Clips
           </button>
-        </div>
-
-        {/* Consolidated vs Multi-Clip Toggle */}
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <label className="inline-flex items-center gap-2.5 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={consolidatedMode}
-              onChange={(e) => setConsolidatedMode(e.target.checked)}
-              className="w-4 h-4 accent-crimson-500"
-            />
-            <span className="text-xs font-semibold text-ink-800">
-              Single Consolidated Highlight Video (auto-detect &amp; slice play segments via FFmpeg)
-            </span>
-          </label>
-          <span className="font-mono text-[11px] text-ink-600">
-            MP4 • MOV • WebM • MKV
-          </span>
         </div>
 
         <input
           ref={fileInputRef}
           type="file"
           accept="video/mp4,video/quicktime,video/webm,video/x-matroska"
-          multiple={!consolidatedMode}
           onChange={(e) => void handleFilesSelected(e.target.files)}
           className="hidden"
         />
@@ -114,352 +119,207 @@ export const ClipUploader: React.FC = () => {
           type="button"
           disabled={isUploading}
           onClick={() => fileInputRef.current?.click()}
-          className="mt-4 w-full border-2 border-dashed border-ink-950 bg-screentone-subtle hover:bg-paper-200/70 py-7 px-4 flex flex-col items-center justify-center gap-2 transition-colors"
+          className="mt-4 w-full border-2 border-dashed border-ink-950 bg-screentone-subtle hover:bg-paper-200/70 py-6 px-4 flex flex-col items-center justify-center gap-2 transition-colors"
         >
           {isUploading ? (
             <>
               <Loader2 className="w-7 h-7 animate-spin text-crimson-500" />
               <span className="font-mono text-xs font-bold uppercase">
-                Extracting FFmpeg Keyframes &amp; Probing Video Streams...
+                Saving &amp; Probing Raw Basketball Video...
               </span>
             </>
           ) : (
             <>
               <Upload className="w-7 h-7 text-ink-900" />
               <span className="font-display text-lg uppercase tracking-wide">
-                Drop Basketball Video Clips Here or Click to Browse
+                Drop Raw Basketball Video Here or Click to Browse
               </span>
               <span className="text-xs text-ink-700">
-                Upload 3–5 chronological plays (dunks, threes, blocks, game-winners) or 1 consolidated reel
+                Full broadcast game, quarter, or personal recording (MP4 • MOV • WebM • MKV) — auto-scouted &amp; ranked during generation
               </span>
             </>
           )}
         </button>
-      </div>
 
-      {/* Loaded Clip Sequence */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="font-mono text-xs font-bold uppercase tracking-wider text-ink-700">
-            Active Story Sequence ({clips.length} {clips.length === 1 ? "Clip" : "Clips"})
-          </span>
-          {clips.length > 0 && (
-            <span className="font-mono text-[11px] text-ink-600">
-              Chronological order preserved in narrative planning
+        {/* Available Raw Videos in `data/` */}
+        <div className="mt-5 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-xs font-bold uppercase tracking-wider text-ink-700">
+              Available Raw Videos ({rawVideos.length})
             </span>
+            <span className="font-mono text-[11px] text-ink-600">
+              Files in <code>data/</code> appear automatically
+            </span>
+          </div>
+
+          {rawVideos.length === 0 ? (
+            <div className="border-2 border-ink-950/30 bg-paper-100/70 p-6 text-center">
+              <Film className="w-7 h-7 mx-auto mb-1.5 text-ink-600" />
+              <p className="font-semibold text-xs text-ink-800">
+                No raw video selected yet. Upload a video above or place an MP4 in <code>data/</code>.
+              </p>
+            </div>
+          ) : (
+            rawVideos.map((vid) => {
+              const isSelected = vid.filePath === selectedRawVideoPath;
+              const isBrowserUploaded = vid.filePath
+                .replace(/\\/g, "/")
+                .includes("/raw_videos/");
+
+              return (
+                <div
+                  key={vid.videoId}
+                  onClick={() => setSelectedRawVideoPath(vid.filePath)}
+                  className={`cursor-pointer border-[2.5px] p-3.5 transition-all flex flex-col sm:flex-row gap-3.5 items-start sm:items-center ${
+                    isSelected
+                      ? "border-crimson-600 bg-paper-100 shadow-manga-sm"
+                      : "border-ink-950 bg-paper-50 hover:bg-paper-100/70"
+                  }`}
+                >
+                  <div className="relative w-full sm:w-44 aspect-video bg-ink-950 border-2 border-ink-950 shrink-0 overflow-hidden">
+                    <video
+                      src={vid.mediaUrl}
+                      muted
+                      playsInline
+                      controls
+                      preload="metadata"
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-full h-full object-cover"
+                    />
+                    <span className="absolute top-1 left-1 bg-ink-950/90 text-paper-50 font-mono text-[10px] font-bold px-1.5 py-0.5">
+                      {formatDuration(vid.durationSec)}
+                    </span>
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {isSelected && (
+                        <CheckCircle2 className="w-4 h-4 text-crimson-600 shrink-0" />
+                      )}
+                      <h3 className="font-display text-base uppercase tracking-wide text-ink-950 truncate">
+                        {vid.title}
+                      </h3>
+                    </div>
+
+                    <div className="font-mono text-[11px] text-ink-700 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                      <span>
+                        {vid.width}×{vid.height} @ {Math.round(vid.fps)}fps
+                      </span>
+                      <span>{formatSizeMb(vid.sizeBytes)}</span>
+                    </div>
+
+                    {vid.cachedHandoffs.length > 0 && (
+                      <div className="mt-2 inline-flex items-center gap-1.5 bg-emerald-950 text-emerald-300 font-mono text-[10px] font-bold px-2 py-0.5 border border-ink-950">
+                        <Database className="w-3 h-3" />
+                        Cached Ingest Ready ({vid.cachedHandoffs[0].selectedPoolCount} beats +{" "}
+                        {vid.cachedHandoffs[0].attachedReplayCount} zoomed angles)
+                      </div>
+                    )}
+                  </div>
+
+                  {isBrowserUploaded && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void removeRawVideo(vid.filePath);
+                      }}
+                      className="p-1.5 border border-ink-950 text-crimson-600 hover:bg-crimson-500 hover:text-white self-end sm:self-center"
+                      title="Delete uploaded raw video"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              );
+            })
           )}
         </div>
+      </div>
 
-        {clips.length === 0 ? (
-          <div className="border-2 border-ink-950/30 bg-paper-50/60 p-8 text-center">
-            <Film className="w-8 h-8 mx-auto mb-2 text-ink-600" />
-            <p className="font-semibold text-sm text-ink-800">
-              No highlight clips loaded yet.
-            </p>
-            <p className="text-xs text-ink-600 mt-1">
-              Upload your own basketball MP4 clips above or click{" "}
-              <strong>Load 5 Sample Highlights</strong> to generate a playable 5-clip comeback sequence.
-            </p>
+      {/* Step 2: Single Accompanying Prompt for the Video */}
+      <div className="border-[3px] border-ink-950 bg-paper-50 p-6 shadow-manga space-y-4">
+        <div>
+          <span className="font-mono text-[11px] font-bold uppercase tracking-widest text-crimson-600 flex items-center gap-1.5">
+            <MessageSquareText className="w-3.5 h-3.5" />
+            Stage 2 • Story Focus Prompt
+          </span>
+          <h2 className="font-display text-2xl uppercase tracking-wide text-ink-950 mt-0.5">
+            Prompt to Accompany Video
+          </h2>
+          <p className="text-xs text-ink-700 mt-1">
+            Tell the agent what storyline, player, or stretch to focus on. Our upstream pipeline scouts the raw video, scores moments with Gemini Decision 1, pairs zoomed-in replay angles, and hands off directly to the Manga Director.
+          </p>
+        </div>
+
+        <textarea
+          rows={3}
+          value={userPrompt}
+          onChange={(e) => setUserPrompt(e.target.value)}
+          placeholder="e.g., Emphasize the last steal into game-winning 3-pointer, or follow #23's fourth-quarter comeback..."
+          className="w-full border-2 border-ink-950 bg-paper-100 px-3.5 py-2.5 text-sm font-medium focus:outline-none focus:border-crimson-600"
+        />
+
+        <div className="flex flex-wrap gap-1.5">
+          {EXAMPLE_PROMPTS.map((sample) => (
+            <button
+              key={sample}
+              type="button"
+              onClick={() => setUserPrompt(sample)}
+              className="font-mono text-[10px] border border-ink-950/60 bg-paper-100 hover:bg-ink-950 hover:text-paper-50 px-2 py-1 transition-colors text-left"
+            >
+              {sample}
+            </button>
+          ))}
+        </div>
+
+        {selectedVideo && selectedVideo.cachedHandoffs.length > 0 && (
+          <div className="pt-2 border-t border-ink-950/15 space-y-2">
+            <label className="inline-flex items-center gap-2.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={reuseIngestCache}
+                onChange={(e) => setReuseIngestCache(e.target.checked)}
+                className="w-4 h-4 accent-crimson-500"
+              />
+              <span className="text-xs font-semibold text-ink-900">
+                Reuse cached Python video scout &amp; ranking when available (uncheck to re-scout raw video from scratch)
+              </span>
+            </label>
+
+            {reuseIngestCache && selectedVideo.cachedHandoffs.length > 1 && (
+              <div>
+                <label className="block font-mono text-[10px] font-bold uppercase mb-1 text-ink-700">
+                  Cached Handoff Run
+                </label>
+                <select
+                  value={
+                    selectedCachedHandoffPath ||
+                    selectedVideo.cachedHandoffs[0].handoffPath
+                  }
+                  onChange={(e) => {
+                    const chosen = selectedVideo.cachedHandoffs.find(
+                      (h) => h.handoffPath === e.target.value
+                    );
+                    setSelectedCachedHandoffPath(e.target.value);
+                    if (chosen?.userFocus) {
+                      setUserPrompt(chosen.userFocus);
+                    }
+                  }}
+                  className="w-full border-2 border-ink-950 bg-paper-100 px-2.5 py-1.5 text-xs font-mono"
+                >
+                  {selectedVideo.cachedHandoffs.map((h) => (
+                    <option key={h.handoffPath} value={h.handoffPath}>
+                      {h.jobId} — {h.selectedPoolCount} beats ({h.attachedReplayCount} zoomed) — &ldquo;
+                      {h.userFocus.slice(0, 50)}&rdquo;
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
-        ) : (
-          clips.map((clip, idx) => (
-            <ClipItemCard
-              key={clip.clipId}
-              clip={clip}
-              index={idx}
-              total={clips.length}
-              isExpanded={expandedClipId === clip.clipId}
-              onToggleExpand={() =>
-                setExpandedClipId(
-                  expandedClipId === clip.clipId ? null : clip.clipId
-                )
-              }
-              onMoveUp={() => void reorderClip(clip.clipId, "up")}
-              onMoveDown={() => void reorderClip(clip.clipId, "down")}
-              onRemove={() => void removeClip(clip.clipId)}
-              onSaveDetails={(title, meta) =>
-                void updateClipDetails(clip.clipId, title, meta)
-              }
-            />
-          ))
         )}
       </div>
-    </div>
-  );
-};
-
-interface ClipItemCardProps {
-  clip: NormalizedClip;
-  index: number;
-  total: number;
-  isExpanded: boolean;
-  onToggleExpand: () => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-  onRemove: () => void;
-  onSaveDetails: (
-    title: string,
-    metadata: Partial<NormalizedClip["metadata"]>
-  ) => void;
-}
-
-const ClipItemCard: React.FC<ClipItemCardProps> = ({
-  clip,
-  index,
-  total,
-  isExpanded,
-  onToggleExpand,
-  onMoveUp,
-  onMoveDown,
-  onRemove,
-  onSaveDetails,
-}) => {
-  const [title, setTitle] = useState(clip.title);
-  const [homeTeam, setHomeTeam] = useState(clip.metadata.homeTeam || "");
-  const [awayTeam, setAwayTeam] = useState(clip.metadata.awayTeam || "");
-  const [quarter, setQuarter] = useState(clip.metadata.quarter || "");
-  const [gameClock, setGameClock] = useState(clip.metadata.gameClock || "");
-  const [score, setScore] = useState(clip.metadata.score || "");
-  const [playersText, setPlayersText] = useState(
-    clip.metadata.players.join(", ")
-  );
-  const [eventDescription, setEventDescription] = useState(
-    clip.metadata.eventDescription || ""
-  );
-
-  return (
-    <div className="bg-paper-50 border-[2.5px] border-ink-950 shadow-manga-sm overflow-hidden">
-      <div className="flex flex-col sm:flex-row gap-3.5 p-3.5 items-start sm:items-center">
-        {/* Video Scrub Preview */}
-        <div className="relative w-full sm:w-44 aspect-video bg-ink-950 border-2 border-ink-950 shrink-0 overflow-hidden">
-          <video
-            src={clip.mediaUrl}
-            muted
-            playsInline
-            controls
-            preload="metadata"
-            className="w-full h-full object-cover"
-          />
-          <span className="absolute top-1 left-1 bg-ink-950/90 text-paper-50 font-mono text-[10px] font-bold px-1.5 py-0.5">
-            #{index + 1} • {clip.durationSec.toFixed(1)}s
-          </span>
-        </div>
-
-        {/* Clip Summary */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-display text-base uppercase tracking-wide text-ink-950 truncate">
-              {clip.title}
-            </h3>
-            {clip.metadata.quarter && (
-              <span className="font-mono text-[10px] font-bold bg-ink-950 text-paper-50 px-1.5 py-0.5">
-                {clip.metadata.quarter} {clip.metadata.gameClock || ""}
-              </span>
-            )}
-            {clip.metadata.score && (
-              <span className="font-mono text-[10px] font-bold bg-paper-200 border border-ink-950 px-1.5 py-0.5">
-                {clip.metadata.score}
-              </span>
-            )}
-          </div>
-
-          <p className="text-xs text-ink-700 line-clamp-2 mt-1">
-            {clip.metadata.eventDescription ||
-              `${clip.keyframes.length} keyframes extracted (${clip.width}×${clip.height} @ ${clip.fps}fps)`}
-          </p>
-
-          {/* Extracted Keyframe Filmstrip */}
-          <div className="flex items-center gap-1.5 mt-2 overflow-x-auto">
-            {clip.keyframes.slice(0, 5).map((kf) => (
-              <img
-                key={kf.frameId}
-                src={kf.mediaUrl}
-                alt={`${kf.timestampSec}s`}
-                title={`Keyframe ${kf.frameId} @ ${kf.timestampSec}s`}
-                className="w-12 h-7 object-cover border border-ink-950/60 shrink-0"
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Order & Metadata Controls */}
-        <div className="flex sm:flex-col items-center gap-1 self-end sm:self-center">
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              disabled={index === 0}
-              onClick={onMoveUp}
-              className="p-1.5 border border-ink-950 hover:bg-ink-950 hover:text-paper-50 disabled:opacity-30"
-              title="Move earlier in game order"
-            >
-              <ArrowUp className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              disabled={index === total - 1}
-              onClick={onMoveDown}
-              className="p-1.5 border border-ink-950 hover:bg-ink-950 hover:text-paper-50 disabled:opacity-30"
-              title="Move later in game order"
-            >
-              <ArrowDown className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          <div className="flex items-center gap-1 mt-0 sm:mt-1">
-            <button
-              type="button"
-              onClick={onToggleExpand}
-              className="inline-flex items-center gap-1 px-2 py-1 border border-ink-950 font-mono text-[10px] font-bold uppercase hover:bg-paper-200"
-            >
-              Context
-              {isExpanded ? (
-                <ChevronUp className="w-3 h-3" />
-              ) : (
-                <ChevronDown className="w-3 h-3" />
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={onRemove}
-              className="p-1.5 border border-ink-950 text-crimson-600 hover:bg-crimson-500 hover:text-white"
-              title="Remove clip"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Expandable Game Context Metadata Editor */}
-      {isExpanded && (
-        <div className="border-t-2 border-ink-950 bg-paper-100 p-4 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block font-mono text-[10px] font-bold uppercase mb-1">
-                Clip Title
-              </label>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full border-2 border-ink-950 bg-paper-50 px-2.5 py-1.5 text-xs font-medium"
-              />
-            </div>
-            <div>
-              <label className="block font-mono text-[10px] font-bold uppercase mb-1">
-                Home Team
-              </label>
-              <input
-                type="text"
-                value={homeTeam}
-                onChange={(e) => setHomeTeam(e.target.value)}
-                placeholder="e.g. Crimson Vipers"
-                className="w-full border-2 border-ink-950 bg-paper-50 px-2.5 py-1.5 text-xs"
-              />
-            </div>
-            <div>
-              <label className="block font-mono text-[10px] font-bold uppercase mb-1">
-                Away Team
-              </label>
-              <input
-                type="text"
-                value={awayTeam}
-                onChange={(e) => setAwayTeam(e.target.value)}
-                placeholder="e.g. Harbor Titans"
-                className="w-full border-2 border-ink-950 bg-paper-50 px-2.5 py-1.5 text-xs"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block font-mono text-[10px] font-bold uppercase mb-1">
-                Quarter
-              </label>
-              <input
-                type="text"
-                value={quarter}
-                onChange={(e) => setQuarter(e.target.value)}
-                placeholder="Q4"
-                className="w-full border-2 border-ink-950 bg-paper-50 px-2.5 py-1.5 text-xs"
-              />
-            </div>
-            <div>
-              <label className="block font-mono text-[10px] font-bold uppercase mb-1">
-                Game Clock
-              </label>
-              <input
-                type="text"
-                value={gameClock}
-                onChange={(e) => setGameClock(e.target.value)}
-                placeholder="00:03.4"
-                className="w-full border-2 border-ink-950 bg-paper-50 px-2.5 py-1.5 text-xs"
-              />
-            </div>
-            <div>
-              <label className="block font-mono text-[10px] font-bold uppercase mb-1">
-                Verified Score
-              </label>
-              <input
-                type="text"
-                value={score}
-                onChange={(e) => setScore(e.target.value)}
-                placeholder="VIPERS 103 - TITANS 101"
-                className="w-full border-2 border-ink-950 bg-paper-50 px-2.5 py-1.5 text-xs"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block font-mono text-[10px] font-bold uppercase mb-1">
-              Key Players &amp; Jersey Numbers (comma-separated)
-            </label>
-            <input
-              type="text"
-              value={playersText}
-              onChange={(e) => setPlayersText(e.target.value)}
-              placeholder="Jalen Vance (#23, Vipers), Darius Kade (#11, Titans)"
-              className="w-full border-2 border-ink-950 bg-paper-50 px-2.5 py-1.5 text-xs"
-            />
-          </div>
-
-          <div>
-            <label className="block font-mono text-[10px] font-bold uppercase mb-1">
-              Play Description / Upstream Pipeline Context
-            </label>
-            <textarea
-              rows={2}
-              value={eventDescription}
-              onChange={(e) => setEventDescription(e.target.value)}
-              className="w-full border-2 border-ink-950 bg-paper-50 px-2.5 py-1.5 text-xs"
-            />
-          </div>
-
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => {
-                onSaveDetails(title, {
-                  homeTeam: homeTeam || undefined,
-                  awayTeam: awayTeam || undefined,
-                  quarter: quarter || undefined,
-                  gameClock: gameClock || undefined,
-                  score: score || undefined,
-                  players: playersText
-                    .split(",")
-                    .map((s) => s.trim())
-                    .filter(Boolean),
-                  eventDescription: eventDescription || undefined,
-                });
-                onToggleExpand();
-              }}
-              className="bg-ink-950 text-paper-50 font-mono text-xs font-bold uppercase px-4 py-1.5 hover:bg-crimson-500 transition-colors"
-            >
-              Save Clip Metadata
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

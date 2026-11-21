@@ -8,6 +8,7 @@ import {
   MangaStoryProject,
   NormalizedClip,
   PipelineMode,
+  RawVideoRecord,
 } from "@/types/manga";
 
 export type AppScreen = "studio" | "progress" | "storyboard" | "reader";
@@ -52,6 +53,11 @@ interface MangaWorkspaceState {
   activeScreen: AppScreen;
   systemStatus: SystemStatusInfo | null;
   mode: PipelineMode;
+  rawVideos: RawVideoRecord[];
+  selectedRawVideoPath: string | null;
+  userPrompt: string;
+  reuseIngestCache: boolean;
+  selectedCachedHandoffPath: string | null;
   clips: NormalizedClip[];
   savedStories: SavedStorySummary[];
   preferences: MangaPreferences;
@@ -69,6 +75,10 @@ interface MangaWorkspaceState {
 
   setActiveScreen: (screen: AppScreen) => void;
   setMode: (mode: PipelineMode) => void;
+  setSelectedRawVideoPath: (filePath: string | null) => void;
+  setUserPrompt: (prompt: string) => void;
+  setReuseIngestCache: (reuse: boolean) => void;
+  setSelectedCachedHandoffPath: (handoffPath: string | null) => void;
   updatePreferences: (patch: Partial<MangaPreferences>) => void;
   setSelectedPanelId: (panelId: string | null) => void;
   openVideoForPanel: (panel: MangaPanel) => void;
@@ -77,6 +87,8 @@ interface MangaWorkspaceState {
   setErrorBanner: (msg: string | null) => void;
 
   fetchInitialData: (initialStoryId?: string) => Promise<void>;
+  uploadRawVideo: (file: File) => Promise<void>;
+  removeRawVideo: (filePath: string) => Promise<void>;
   loadSampleHighlights: () => Promise<void>;
   uploadVideoFiles: (files: File[], consolidated: boolean) => Promise<void>;
   reorderClip: (clipId: string, direction: "up" | "down") => Promise<void>;
@@ -97,6 +109,11 @@ export const useMangaStore = create<MangaWorkspaceState>((set, get) => ({
   activeScreen: "studio",
   systemStatus: null,
   mode: "demo",
+  rawVideos: [],
+  selectedRawVideoPath: null,
+  userPrompt: "",
+  reuseIngestCache: true,
+  selectedCachedHandoffPath: null,
   clips: [],
   savedStories: [],
   preferences: {
@@ -112,6 +129,7 @@ export const useMangaStore = create<MangaWorkspaceState>((set, get) => ({
     visualEffectsIntensity: 8,
     useLayoutOptimizerNeon: false,
     directorNotes: "",
+    userPrompt: "",
   },
   activeJob: null,
   currentProject: null,
@@ -124,6 +142,31 @@ export const useMangaStore = create<MangaWorkspaceState>((set, get) => ({
 
   setActiveScreen: (screen) => set({ activeScreen: screen }),
   setMode: (mode) => set({ mode, errorBanner: null }),
+  setSelectedRawVideoPath: (filePath) => {
+    const { rawVideos, userPrompt } = get();
+    const vid = rawVideos.find((v) => v.filePath === filePath);
+    const topCache = vid?.cachedHandoffs?.[0] || null;
+    set({
+      selectedRawVideoPath: filePath,
+      selectedCachedHandoffPath: topCache ? topCache.handoffPath : null,
+      userPrompt:
+        !userPrompt.trim() && topCache?.userFocus
+          ? topCache.userFocus
+          : userPrompt,
+    });
+  },
+  setUserPrompt: (prompt) =>
+    set((state) => ({
+      userPrompt: prompt,
+      preferences: {
+        ...state.preferences,
+        userPrompt: prompt,
+        directorNotes: prompt,
+      },
+    })),
+  setReuseIngestCache: (reuse) => set({ reuseIngestCache: reuse }),
+  setSelectedCachedHandoffPath: (handoffPath) =>
+    set({ selectedCachedHandoffPath: handoffPath }),
   updatePreferences: (patch) =>
     set((state) => ({
       preferences: { ...state.preferences, ...patch },
@@ -149,8 +192,9 @@ export const useMangaStore = create<MangaWorkspaceState>((set, get) => ({
   fetchInitialData: async (initialStoryId?: string) => {
     set({ isLoadingClips: true });
     try {
-      const [statusRes, clipsRes, storiesRes] = await Promise.all([
+      const [statusRes, videosRes, clipsRes, storiesRes] = await Promise.all([
         fetch("/api/status"),
+        fetch("/api/videos"),
         fetch("/api/clips"),
         fetch("/api/manga/generate"),
       ]);
@@ -161,6 +205,30 @@ export const useMangaStore = create<MangaWorkspaceState>((set, get) => ({
           systemStatus: statusData,
           mode: statusData.recommendedDefaultMode,
         });
+      }
+
+      if (videosRes.ok) {
+        const videosData = (await videosRes.json()) as {
+          videos: RawVideoRecord[];
+        };
+        const list = videosData.videos || [];
+        const currentSelected = get().selectedRawVideoPath;
+        const autoSelected =
+          currentSelected && list.some((v) => v.filePath === currentSelected)
+            ? currentSelected
+            : list[0]?.filePath || null;
+        const chosenVid = list.find((v) => v.filePath === autoSelected);
+        const latestCache = chosenVid?.cachedHandoffs?.[0] || null;
+
+        set((state) => ({
+          rawVideos: list,
+          selectedRawVideoPath: autoSelected,
+          selectedCachedHandoffPath: latestCache ? latestCache.handoffPath : null,
+          userPrompt:
+            !state.userPrompt.trim() && latestCache?.userFocus
+              ? latestCache.userFocus
+              : state.userPrompt,
+        }));
       }
 
       if (clipsRes.ok) {
@@ -196,13 +264,61 @@ export const useMangaStore = create<MangaWorkspaceState>((set, get) => ({
     }
   },
 
+  uploadRawVideo: async (file) => {
+    set({ isUploading: true, errorBanner: null });
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/videos/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Raw video upload failed");
+
+      const uploadedPath = data.uploaded?.filePath || data.videos?.[0]?.filePath || null;
+      set({
+        rawVideos: data.videos || [],
+        selectedRawVideoPath: uploadedPath,
+        selectedCachedHandoffPath: null,
+      });
+    } catch (err) {
+      set({
+        errorBanner: err instanceof Error ? err.message : "Upload failed",
+      });
+    } finally {
+      set({ isUploading: false });
+    }
+  },
+
+  removeRawVideo: async (filePath) => {
+    const res = await fetch(
+      `/api/videos?filePath=${encodeURIComponent(filePath)}`,
+      { method: "DELETE" }
+    );
+    const data = await res.json();
+    if (!res.ok) {
+      set({ errorBanner: data.error || "Could not delete raw video" });
+      return;
+    }
+    const list: RawVideoRecord[] = data.videos || [];
+    set((state) => ({
+      rawVideos: list,
+      selectedRawVideoPath:
+        state.selectedRawVideoPath === filePath
+          ? list[0]?.filePath || null
+          : state.selectedRawVideoPath,
+    }));
+  },
+
   loadSampleHighlights: async () => {
     set({ isLoadingClips: true, errorBanner: null });
     try {
       const res = await fetch("/api/clips/samples", { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load sample clips");
-      set({ clips: data.clips });
+      set({ clips: data.clips, selectedRawVideoPath: null });
     } catch (err) {
       set({
         errorBanner:
@@ -213,28 +329,9 @@ export const useMangaStore = create<MangaWorkspaceState>((set, get) => ({
     }
   },
 
-  uploadVideoFiles: async (files, consolidated) => {
+  uploadVideoFiles: async (files, _consolidated) => {
     if (files.length === 0) return;
-    set({ isUploading: true, errorBanner: null });
-    try {
-      const formData = new FormData();
-      files.forEach((f) => formData.append("files", f));
-      formData.append("consolidated", consolidated ? "true" : "false");
-
-      const res = await fetch("/api/clips/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Video upload failed");
-      set({ clips: data.clips });
-    } catch (err) {
-      set({
-        errorBanner: err instanceof Error ? err.message : "Upload failed",
-      });
-    } finally {
-      set({ isUploading: false });
-    }
+    await get().uploadRawVideo(files[0]);
   },
 
   reorderClip: async (clipId, direction) => {
@@ -282,26 +379,53 @@ export const useMangaStore = create<MangaWorkspaceState>((set, get) => ({
   },
 
   startGeneration: async (resumeJobId) => {
-    const { clips, preferences, mode } = get();
-    if (clips.length === 0) {
+    const {
+      selectedRawVideoPath,
+      userPrompt,
+      reuseIngestCache,
+      selectedCachedHandoffPath,
+      clips,
+      preferences,
+      mode,
+    } = get();
+
+    if (!selectedRawVideoPath && clips.length === 0) {
       set({
         errorBanner:
-          "Upload basketball highlight clips or click 'Load 5 Sample Highlights' first.",
+          "Upload or select a raw basketball video first.",
       });
       return;
     }
 
     set({ errorBanner: null });
     try {
+      const payload = selectedRawVideoPath
+        ? {
+            rawVideoPath: selectedRawVideoPath,
+            userPrompt: userPrompt.trim(),
+            reuseIngestCache,
+            cachedHandoffPath: reuseIngestCache
+              ? selectedCachedHandoffPath || undefined
+              : undefined,
+            preferences: {
+              ...preferences,
+              userPrompt: userPrompt.trim(),
+              directorNotes: userPrompt.trim() || preferences.directorNotes,
+            },
+            mode,
+            resumeJobId,
+          }
+        : {
+            clipIds: clips.map((c) => c.clipId),
+            preferences,
+            mode,
+            resumeJobId,
+          };
+
       const res = await fetch("/api/manga/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clipIds: clips.map((c) => c.clipId),
-          preferences,
-          mode,
-          resumeJobId,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to start generation");
@@ -329,10 +453,17 @@ export const useMangaStore = create<MangaWorkspaceState>((set, get) => ({
         if (job.status === "completed") {
           active = false;
           await get().loadStory(job.storyId, "reader");
-          const storiesRes = await fetch("/api/manga/generate");
+          const [storiesRes, videosRes] = await Promise.all([
+            fetch("/api/manga/generate"),
+            fetch("/api/videos"),
+          ]);
           if (storiesRes.ok) {
             const storiesData = await storiesRes.json();
             set({ savedStories: storiesData.stories || [] });
+          }
+          if (videosRes.ok) {
+            const videosData = await videosRes.json();
+            set({ rawVideos: videosData.videos || [] });
           }
         } else if (job.status === "failed") {
           active = false;

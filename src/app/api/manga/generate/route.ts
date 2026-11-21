@@ -4,12 +4,25 @@ import { MangaPreferencesSchema, PipelineModeSchema } from "@/types/manga";
 import { MangaJobManager } from "@/lib/jobs/job-manager";
 import { StorageService } from "@/lib/storage/storage-service";
 
-const StartGenerateRequestSchema = z.object({
-  clipIds: z.array(z.string()).min(1, "Select or upload at least one clip"),
-  preferences: MangaPreferencesSchema.optional(),
-  mode: PipelineModeSchema.default("real"),
-  resumeJobId: z.string().optional(),
-});
+const StartGenerateRequestSchema = z
+  .object({
+    rawVideoPath: z.string().min(1).optional(),
+    userPrompt: z.string().max(1500).optional(),
+    reuseIngestCache: z.boolean().default(true),
+    cachedHandoffPath: z.string().optional(),
+    clipIds: z.array(z.string()).optional(),
+    preferences: MangaPreferencesSchema.optional(),
+    mode: PipelineModeSchema.default("real"),
+    resumeJobId: z.string().optional(),
+  })
+  .refine(
+    (val) =>
+      Boolean(val.rawVideoPath) || Boolean(val.clipIds && val.clipIds.length > 0),
+    {
+      message:
+        "Provide a raw basketball video (rawVideoPath) or at least one clipId.",
+    }
+  );
 
 export async function GET(): Promise<NextResponse> {
   try {
@@ -42,9 +55,24 @@ export async function GET(): Promise<NextResponse> {
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     const parsed = StartGenerateRequestSchema.parse(await req.json());
-    const preferences = MangaPreferencesSchema.parse(parsed.preferences || {});
+    const effectivePrompt = (
+      parsed.userPrompt ??
+      parsed.preferences?.userPrompt ??
+      parsed.preferences?.directorNotes ??
+      ""
+    ).trim();
+
+    const preferences = MangaPreferencesSchema.parse({
+      ...(parsed.preferences || {}),
+      userPrompt: effectivePrompt,
+      directorNotes: effectivePrompt || parsed.preferences?.directorNotes || "",
+    });
 
     const job = await MangaJobManager.startGenerationJob({
+      rawVideoPath: parsed.rawVideoPath,
+      userPrompt: effectivePrompt,
+      reuseIngestCache: parsed.reuseIngestCache,
+      cachedHandoffPath: parsed.cachedHandoffPath,
       clipIds: parsed.clipIds,
       preferences,
       mode: parsed.mode,
