@@ -158,7 +158,7 @@ export const MangaPreferencesSchema = z.object({
   actionIntensity: ActionIntensitySchema.default("dramatic"),
   referenceInfluence: ReferenceInfluenceSchema.default("balanced"),
   storytellingFocus: StorytellingFocusSchema.default("balanced"),
-  targetPages: z.number().int().min(1).max(8).default(3),
+  targetPages: z.number().int().min(1).max(8).default(2), // short clips (secs–1 min) read best as 2 pages
   readingDirection: ReadingDirectionSchema.default("rtl"),
   storyFocus: z
     .enum([

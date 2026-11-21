@@ -105,7 +105,7 @@ export const useMangaStore = create<MangaWorkspaceState>((set, get) => ({
     actionIntensity: "dramatic",
     referenceInfluence: "balanced",
     storytellingFocus: "balanced",
-    targetPages: 3,
+    targetPages: 2,
     readingDirection: "rtl",
     storyFocus: "auto",
     dramaticIntensity: 8,

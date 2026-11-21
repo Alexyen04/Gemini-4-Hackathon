@@ -46,8 +46,9 @@ export class MangaDirectorAgent {
     characters: CharacterReference[];
     preferences: MangaPreferences;
     styleProfile?: MangaVisualStyleProfile;
+    ingestContext?: string;
   }): Promise<StoryNarrative> {
-    const { clips, analyses, characters, preferences, styleProfile } = params;
+    const { clips, analyses, characters, preferences, styleProfile, ingestContext = "" } = params;
     const systemInstruction =
       await MangaSkillLoader.getNarrativeSystemInstruction();
 
@@ -100,7 +101,8 @@ REQUIREMENTS:
       preferences.targetPages * 4
     } total panels across ${preferences.targetPages} pages).
 3. Maintain strict chronological order and factual play outcomes. Never invent plays or fabricate real athlete press quotes.
-4. Return valid JSON matching StoryNarrativeSchema.`;
+4. Return valid JSON matching StoryNarrativeSchema.
+${ingestContext}`;
 
     const { data } = await GeminiClientService.generateStructuredJson({
       role: "hydrogen",
@@ -128,6 +130,7 @@ REQUIREMENTS:
     preferences: MangaPreferences;
     styleProfile?: MangaVisualStyleProfile;
     referenceIndex?: MangaReferenceIndex;
+    ingestContext?: string;
   }): Promise<MangaStoryboard> {
     const {
       storyId,
@@ -138,6 +141,7 @@ REQUIREMENTS:
       preferences,
       styleProfile,
       referenceIndex,
+      ingestContext = "",
     } = params;
     const systemInstruction =
       await MangaSkillLoader.getStoryboardSystemInstruction();
@@ -197,7 +201,8 @@ STORYBOARD GENERATION RULES:
 4. Set "illustration.style"="${preferences.style}" and "illustration.colorTreatment"="${preferences.colorTreatment}". Write highly specific, anime/manga reference-guided "illustration.prompt" instructions grounded in the real play!
 5. Never copy reference manga character designs or fabricate real-world athlete press quotes.
 
-Return valid JSON matching MangaStoryboardSchema.`;
+Return valid JSON matching MangaStoryboardSchema.
+${ingestContext}`;
 
     const { data: rawStoryboard } =
       await GeminiClientService.generateStructuredJson({

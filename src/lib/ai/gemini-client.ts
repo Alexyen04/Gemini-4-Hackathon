@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import { GoogleGenAI, ThinkingLevel, Part } from "@google/genai";
 import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 import { ALLOWED_GEMINI_MODELS, AllowedGeminiModel } from "@/types/manga";
 
 export type AgentModelRole = "argon" | "carbon" | "hydrogen" | "neon";
@@ -36,6 +37,35 @@ export function resolveRoleModel(role: AgentModelRole): AllowedGeminiModel {
     neon: process.env.GEMINI_MODEL_NEON || "gemini-4-neon",
   };
   return assertAllowedGeminiModel(map[role]);
+}
+
+// Gemini rejects schemas with numeric bounds / length limits / formats as "too many states".
+// Strip them from what we send; Zod still enforces every constraint on the parsed reply.
+const SERVING_HEAVY_KEYS = new Set([
+  "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf",
+  "minItems", "maxItems", "minLength", "maxLength", "pattern", "format",
+  "default", "$schema", "additionalProperties",
+]);
+export function stripServingConstraints(node: unknown): Record<string, unknown> {
+  const walk = (n: unknown): unknown => {
+    if (Array.isArray(n)) return n.map(walk);
+    if (!n || typeof n !== "object") return n;
+    const out: Record<string, unknown> = {};
+    // keep the limits the model must respect, as a text hint instead of a hard constraint
+    const o = n as Record<string, unknown>;
+    const hints = (["minimum", "maximum", "minItems", "maxItems"] as const)
+      .filter((k) => typeof o[k] === "number")
+      .map((k) => `${k} ${o[k]}`);
+    if (hints.length) out.description = [o.description, hints.join(", ")].filter(Boolean).join(". ");
+    for (const [k, v] of Object.entries(n)) {
+      if (k === "description" && hints.length) continue;
+      if (SERVING_HEAVY_KEYS.has(k)) continue;
+      if (k === "const") out.enum = [v]; // Gemini ignores `const` (z.literal); it honors a one-value enum
+      else out[k] = walk(v);
+    }
+    return out;
+  };
+  return walk(node) as Record<string, unknown>;
 }
 
 export function hasConfiguredApiKey(): boolean {
@@ -184,6 +214,9 @@ export class GeminiClientService {
 
     const model = resolveRoleModel(role);
     const ai = this.getClient();
+    // Callers only name their schema in the prompt; send the real shape so Gemini can't guess field names.
+    const responseSchema =
+      jsonSchema ?? stripServingConstraints(zodToJsonSchema(zodSchema, { $refStrategy: "none", target: "jsonSchema7" }));
 
     const normalizedParts: Part[] = contents.map((item) =>
       typeof item === "string" ? { text: item } : item
@@ -206,7 +239,7 @@ export class GeminiClientService {
           config: {
             systemInstruction,
             responseMimeType: "application/json",
-            ...(jsonSchema ? { responseJsonSchema: jsonSchema } : {}),
+            responseJsonSchema: responseSchema,
             thinkingConfig: {
               thinkingLevel: sdkThinkingLevel,
             },

@@ -26,6 +26,7 @@ import { MangaDirectorAgent } from "@/lib/ai/manga-director";
 import { CarbonIllustrationAgent } from "@/lib/ai/carbon-illustrator";
 import { MangaQualityReviewer } from "@/lib/ai/quality-reviewer";
 import { DemoPipelineSynthesizer } from "@/lib/ai/demo-fixtures";
+import { runIngestForClips, ingestPromptBlock, type IngestResult } from "@/lib/pipeline/ingest-bridge";
 import { CharacterReferenceService } from "@/lib/manga/character-references";
 import { HybridMangaRenderer } from "@/lib/manga/hybrid-renderer";
 import { PageCompositionService } from "@/lib/manga/layout-engine";
@@ -283,16 +284,30 @@ export class MangaJobManager {
       job.jobId,
       "clip_analysis"
     );
-    if (!analyses) {
-      analyses = isReal
-        ? await ClipUnderstandingAgent.analyzeClips(clips)
-        : DemoPipelineSynthesizer.buildDemoClipAnalyses(clips);
+    // Python upstream (plan → scout → gemini-decision-1 rank) runs alongside clip understanding.
+    let ingest = await StorageService.loadCheckpoint<IngestResult[]>(job.jobId, "ingest_ranking");
+    if (!analyses || !ingest) {
+      const [a, i] = await Promise.all([
+        analyses
+          ? Promise.resolve(analyses)
+          : isReal
+          ? ClipUnderstandingAgent.analyzeClips(clips)
+          : Promise.resolve(DemoPipelineSynthesizer.buildDemoClipAnalyses(clips)),
+        ingest ? Promise.resolve(ingest) : isReal ? runIngestForClips(clips, preferences, job.jobId) : Promise.resolve([]),
+      ]);
+      analyses = a;
+      ingest = i;
       await StorageService.saveCheckpoint(job.jobId, "clip_analysis", analyses);
+      await StorageService.saveCheckpoint(job.jobId, "ingest_ranking", ingest);
     }
+    const ingestContext = ingestPromptBlock(ingest);
+    const rankedBeats = ingest.reduce((n, r) => n + r.beatCount, 0);
 
     job = await this.updateStage(job, "clip_analysis", {
       status: "completed",
-      detail: `Extracted ${analyses.length} verified basketball event records`,
+      detail: `Extracted ${analyses.length} verified basketball event records${
+        isReal ? (rankedBeats ? ` · ${rankedBeats} beats ranked by gemini-decision-1` : " · upstream ranking unavailable") : ""
+      }`,
     });
 
     // ---- Stage 1B: Character & Uniform Consistency Locking ----
@@ -340,6 +355,7 @@ export class MangaJobManager {
             characters,
             preferences,
             styleProfile,
+            ingestContext,
           })
         : DemoPipelineSynthesizer.buildDemoNarrative(
             clips,
@@ -382,6 +398,7 @@ export class MangaJobManager {
             preferences,
             styleProfile,
             referenceIndex,
+            ingestContext,
           })
         : DemoPipelineSynthesizer.buildDemoStoryboard({
             storyId: job.storyId,

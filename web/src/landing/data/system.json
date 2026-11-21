@@ -3,50 +3,50 @@
     {
       "id": "01",
       "title": "Input",
-      "label": "video · audio · focus",
-      "in": "game footage + focus prompt",
-      "out": "JobInput",
-      "model": "ffmpeg + gemini-4-carbon (plan)"
+      "label": "clip · keyframes",
+      "in": "basketball clip (seconds to ~1 min)",
+      "out": "normalized clip + keyframes",
+      "model": "ffmpeg + sharp"
     },
     {
       "id": "02",
-      "title": "Scouts",
+      "title": "Watch",
       "label": "gemini-4-argon ×N",
-      "in": "overlapping chunks",
-      "out": "SegmentOutput[]",
+      "in": "clip + keyframes",
+      "out": "verified actions, players, jersey #s, timestamps",
       "model": "gemini-4-argon"
     },
     {
       "id": "03",
-      "title": "Rank",
-      "label": "gemini-decision-1",
-      "in": "CandidateBeat[]",
-      "out": "ScoredCandidate[]",
-      "model": "gemini-decision-1"
+      "title": "Plot",
+      "label": "gemini-4-carbon",
+      "in": "clip analyses",
+      "out": "5-act manga arc",
+      "model": "gemini-4-carbon"
     },
     {
       "id": "04",
-      "title": "Direct",
+      "title": "Storyboard",
       "label": "gemini-4-carbon",
-      "in": "summaries + pool + keyframes",
-      "out": "MangaStoryboard",
+      "in": "arc + manga style guide",
+      "out": "pages, panels, camera shots",
       "model": "gemini-4-carbon"
     },
     {
       "id": "05",
-      "title": "Ink + Check",
-      "label": "nano-banana-2.1 → fact check",
-      "in": "real frame + storyboard",
-      "out": "creative panel, facts verified",
-      "model": "gemini-nano-banana-2.1 + gemini-decision-1"
+      "title": "Illustrate + Check",
+      "label": "carbon → hydrogen",
+      "in": "storyboard + keyframes",
+      "out": "inked panels, facts & quality checked",
+      "model": "gemini-4-carbon + gemini-4-hydrogen"
     },
     {
       "id": "06",
-      "title": "Manga",
-      "label": "real story · new art",
-      "in": "MangaStoryboard + panels",
-      "out": "manga page + provenance",
-      "model": "reader ui"
+      "title": "Read",
+      "label": "click panel → play clip",
+      "in": "illustrated panels",
+      "out": "rtl/ltr manga pages + interactive reader",
+      "model": "page composer + reader"
     }
   ],
   "lanes": 4

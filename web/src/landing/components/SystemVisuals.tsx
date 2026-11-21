@@ -29,7 +29,7 @@ const V01: Visual = {
           <rect key={i} className="v-bar" x={i * 4} y={12 - h * 11} width="2.4" height={h * 22} fill="var(--ink)" />
         ))}
       </svg>
-      <span className="v-chip mono self-start border-2 border-ink bg-paper px-2 py-1 shadow-hard">focus: follow #23 in the 4th</span>
+      <span className="v-chip mono self-start border-2 border-ink bg-paper px-2 py-1 shadow-hard">style: shonen · focus: emotion</span>
     </div>
   ),
   anim: (el) =>
@@ -40,7 +40,7 @@ const V01: Visual = {
       .from(q(el, '.v-chip'), { scale: 1.3, autoAlpha: 0, duration: 0.25 }, '-=0.1'),
 }
 
-/* 02 Scouts: timeline splits into overlapping chunks, N lanes run at once */
+/* 02 Watch (Stage 1, gemini-4-argon): clips + keyframes analyzed in parallel lanes */
 const V02: Visual = {
   View: ({ lanes }) => (
     <div className="flex h-full flex-col justify-center gap-2 px-4 pt-6 pb-3">
@@ -71,55 +71,23 @@ const V02: Visual = {
       .to(q(el, '.v-lane-token'), { autoAlpha: 0, scale: 0.4, duration: 0.15 }),
 }
 
-/* 03 Rank: candidates drop onto action × story 2×2 */
-const DOTS = [
-  { a: 0.86, s: 0.18, tag: 'dunk +20', hot: false },
-  { a: 0.26, s: 0.74, tag: 'missed ft', hot: true },
-  { a: 0.7, s: 0.72, tag: '', hot: false },
-  { a: 0.18, s: 0.22, tag: '', hot: false },
-  { a: 0.42, s: 0.6, tag: '', hot: false },
+/* 03 Plot (Stage 2, gemini-4-carbon): 5-act sports manga arc draws, beats snap on */
+const BEATS = [
+  { x: 10, y: 80, t: 'intro' },
+  { x: 54, y: 62, t: 'rising' },
+  { x: 100, y: 40, t: 'conflict' },
+  { x: 146, y: 10, t: 'climax' },
+  { x: 192, y: 60, t: 'resolution' },
 ]
 const V03: Visual = {
   View: () => (
-    <div className="flex h-full items-center gap-2 px-4 pt-10 pb-7">
-      <span className="mono -rotate-90 whitespace-nowrap">story →</span>
-      <div className="relative aspect-square h-full max-h-full border-[3px] border-ink">
-        <div className="absolute top-0 left-1/2 h-full w-[2px] bg-ink" />
-        <div className="absolute top-1/2 left-0 h-[2px] w-full bg-ink" />
-        <span className="mono absolute top-1 left-1">emotion</span>
-        <span className="mono absolute top-1 right-1">climax</span>
-        <span className="mono absolute right-1 bottom-1">cut</span>
-        <span className="mono absolute bottom-1 left-1">drop</span>
-        {DOTS.map((d, i) => (
-          <div key={i} className="v-dot absolute" style={{ left: `${d.a * 100}%`, bottom: `${d.s * 100}%` }}>
-            <div className={`-translate-x-1/2 translate-y-1/2 border-2 border-ink ${d.hot ? 'h-4 w-4 bg-accent' : 'h-3 w-3 bg-ink'}`} />
-            {d.tag && <span className="mono absolute top-1 left-2 whitespace-nowrap bg-paper px-1">{d.tag}</span>}
-          </div>
-        ))}
-        <span className="mono absolute -bottom-5 left-0 w-full text-center">action →</span>
-      </div>
-    </div>
-  ),
-  anim: (el) =>
-    gsap.timeline({ defaults: { ease: INK } }).from(q(el, '.v-dot'), { y: -80, autoAlpha: 0, stagger: 0.08, duration: 0.35 }),
-}
-
-/* 04 Direct: Kishōtenketsu arc draws, beats snap on */
-const BEATS = [
-  { x: 14, y: 78, t: 'setup' },
-  { x: 72, y: 56, t: 'turn' },
-  { x: 140, y: 14, t: 'climax' },
-  { x: 188, y: 64, t: 'aftermath' },
-]
-const V04: Visual = {
-  View: () => (
-    <div className="flex h-full items-center px-6 pt-9 pb-4">
+    <div className="flex h-full items-center px-6 pt-9 pb-5">
       <svg viewBox="0 0 204 100" className="h-full w-full overflow-visible" aria-hidden>
-        <path className="v-arc" d="M14 78 C 40 74, 52 60, 72 56 S 118 8, 140 14 S 178 50, 188 64" fill="none" stroke="var(--ink)" strokeWidth="3" strokeLinecap="square" />
+        <path className="v-arc" d="M10 80 C 30 76, 40 66, 54 62 S 84 46, 100 40 S 130 8, 146 10 S 180 44, 192 60" fill="none" stroke="var(--ink)" strokeWidth="3" strokeLinecap="square" />
         {BEATS.map((b) => (
           <g key={b.t} className="v-beat">
             <rect x={b.x - 5} y={b.y - 5} width="10" height="10" fill={b.t === 'climax' ? 'var(--accent)' : 'var(--ink)'} stroke="var(--ink)" strokeWidth="2" />
-            <text x={b.x} y={b.y + 20} textAnchor="middle" fontFamily="var(--font-mono)" fontSize="9" fill="var(--ink)">
+            <text x={b.x} y={b.y + 19} textAnchor="middle" fontFamily="var(--font-mono)" fontSize="8.5" fill="var(--ink)">
               {b.t}
             </text>
           </g>
@@ -131,10 +99,33 @@ const V04: Visual = {
     gsap
       .timeline({ defaults: { ease: INK } })
       .from(q(el, '.v-arc'), { drawSVG: '0%', duration: 0.6 })
-      .from(q(el, '.v-beat'), { scale: 0, transformOrigin: '50% 50%', autoAlpha: 0, stagger: 0.12, duration: 0.2 }, '<0.1'),
+      .from(q(el, '.v-beat'), { scale: 0, transformOrigin: '50% 50%', autoAlpha: 0, stagger: 0.1, duration: 0.2 }, '<0.1'),
 }
 
-/* 05 Ink + Check: creative art is allowed, facts are not. Each fact is checked against the real frame. */
+/* 04 Storyboard (Stage 3, gemini-4-carbon): beats become panels with camera shots */
+const SHOTS = [
+  { area: 'col-span-2', shot: 'wide · intro' },
+  { area: '', shot: 'low angle' },
+  { area: 'row-span-2', shot: 'splash · climax', hot: true },
+  { area: '', shot: 'close-up' },
+]
+const V04: Visual = {
+  View: () => (
+    <div className="h-full px-4 pt-10 pb-4">
+      <div className="grid h-full grid-cols-[1fr_1.2fr] grid-rows-[0.8fr_1fr_1fr] gap-1.5">
+        {SHOTS.map((p) => (
+          <div key={p.shot} className={`v-cell relative border-[3px] border-dashed border-ink ${p.area}`}>
+            <span className={`mono absolute bottom-0 left-0 px-1 ${p.hot ? 'bg-accent text-on-accent' : 'bg-ink text-paper'}`}>{p.shot}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  ),
+  anim: (el) =>
+    gsap.timeline({ defaults: { ease: INK } }).from(q(el, '.v-cell'), { clipPath: 'inset(0 100% 0 0)', stagger: 0.12, duration: 0.3 }),
+}
+
+/* 05 Illustrate + Check (Stages 4 & 6): carbon draws, hydrogen checks facts and quality */
 const CHECKS = ['same play', 'same score', 'same players']
 const V05: Visual = {
   View: () => (
@@ -166,7 +157,7 @@ const V05: Visual = {
       .from(q(el, '.v-stamp'), { scale: 2.4, autoAlpha: 0, duration: 0.2, ease: STAMP }),
 }
 
-/* 06 Manga: mini page assembles; one panel flips to its raw source frame and back (ends on the manga) */
+/* 06 Read (Stages 5 & 7): pages compose; a panel flips to its source clip frame and back */
 const V06: Visual = {
   View: () => (
     <div className="h-full px-4 pt-10 pb-3">
