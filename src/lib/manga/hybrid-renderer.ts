@@ -14,6 +14,7 @@ import { StorageService } from "@/lib/storage/storage-service";
 import { KeyframeExtractionService } from "@/lib/video/keyframes";
 import { MangaImageProcessor } from "./image-processing";
 import { SVGIllustrationRenderer } from "./svg-renderer";
+import { inkPanelWithNanoBanana, nanoBananaEnabled } from "@/lib/ai/nano-banana-inker";
 
 function escapeXml(text: string): string {
   return text
@@ -39,6 +40,8 @@ export class HybridMangaRenderer {
     colorTreatment?: ColorTreatment;
     actionIntensity?: ActionIntensity;
     regenerationSeed?: number;
+    /** Real AI mode only: final drawing step with gemini-nano-banana-2.1 (falls back to local ink). */
+    useNanoBanana?: boolean;
   }): Promise<{
     assetFilePath: string;
     assetUrl: string;
@@ -56,6 +59,7 @@ export class HybridMangaRenderer {
         "traditional_monochrome",
       actionIntensity = "dramatic",
       regenerationSeed = 0,
+      useNanoBanana = false,
     } = params;
 
     await StorageService.ensureDirectories();
@@ -90,7 +94,39 @@ export class HybridMangaRenderer {
     );
     let svgOverlayUrl: string | null = null;
 
-    if (spec.renderer === "svg_vector") {
+    const nanoBase =
+      useNanoBanana && nanoBananaEnabled()
+        ? await inkPanelWithNanoBanana({
+            keyframePath: keyframe.filePath,
+            panelPrompt: panel.illustration.prompt,
+            colorTreatment,
+            width: targetW,
+            height: targetH,
+            panelId: panel.panelId,
+          })
+        : null;
+
+    if (nanoBase) {
+      // Nano Banana art from the real frame + Carbon's speed lines / impact effects on top
+      const overlaySvg = SVGIllustrationRenderer.buildEffectsOverlaySvg({
+        width: targetW,
+        height: targetH,
+        spec,
+        style,
+        colorTreatment,
+        actionIntensity,
+        visualEffects: panel.visualEffects,
+        seedSalt: regenerationSeed,
+      });
+      const svgPath = path.join(storyPanelDir, `${panel.panelId}${versionSuffix}_overlay.svg`);
+      await fs.writeFile(svgPath, overlaySvg, "utf-8");
+      svgOverlayUrl = StorageService.toMediaUrl(svgPath);
+      const overlayBuffer = await sharp(Buffer.from(overlaySvg)).png().toBuffer();
+      await sharp(nanoBase)
+        .composite([{ input: overlayBuffer, top: 0, left: 0 }])
+        .png({ compressionLevel: 6 })
+        .toFile(outPngPath);
+    } else if (spec.renderer === "svg_vector") {
       const fullSvg = SVGIllustrationRenderer.buildFullVectorPanelSvg({
         width: targetW,
         height: targetH,

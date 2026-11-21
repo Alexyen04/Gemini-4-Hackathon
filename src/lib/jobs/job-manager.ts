@@ -479,6 +479,7 @@ export class MangaJobManager {
               spec,
               colorTreatment: preferences.colorTreatment,
               actionIntensity: preferences.actionIntensity,
+              useNanoBanana: isReal,
             });
 
             const updatedPanel: MangaPanel = {
@@ -627,6 +628,7 @@ export class MangaJobManager {
             colorTreatment: preferences.colorTreatment,
             actionIntensity: preferences.actionIntensity,
             regenerationSeed: 2,
+            useNanoBanana: isReal,
           });
           p.panels[targetIdx] = {
             ...targetPanel,
@@ -812,6 +814,7 @@ export class MangaJobManager {
       colorTreatment: activeColor,
       actionIntensity: activeIntensity,
       regenerationSeed: nextGenCount,
+      useNanoBanana: project.mode === "real",
     });
 
     const cacheBustedUrl = `${rendered.assetUrl}?v=${Date.now()}`;
