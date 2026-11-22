@@ -1,147 +1,149 @@
-# Gemini-4-Hackathon — Dunkoma
+# Dunkoma ダンコマ
 
-This repo holds three parts. See [AGENTS.md](AGENTS.md) for architecture, model standards and data contracts.
+**Every game has a story.** Dunkoma turns a basketball clip into a storyline-driven manga.
+Real plays, reimagined panels.
 
-| Part | Where | Run |
+Built for the Gemini 4 NYC Hackathon. [AGENTS.md](AGENTS.md) holds the full architecture, Gemini API standards and data contracts. Read it before changing the pipeline.
+
+---
+
+## What's in this repo
+
+| Part | Where | Stack | Run |
+| --- | --- | --- | --- |
+| **Manga Studio** (the product) | repo root: `src/` | Next.js 15, TypeScript, Tailwind, Zod, sharp, FFmpeg | `npm run dev` → http://localhost:3000/studio |
+| **Upstream ingest pipeline** (scout + rank) | `pipeline/`, `media/`, `schemas/`, `run_ingest.py` | Python, `google-genai`, OpenCV, FFmpeg | Called automatically by the studio; also runs standalone |
+| **Landing page** | `web/` | Vite, React, TypeScript, Tailwind v4, GSAP | `cd web && npm run dev` → http://localhost:5173 |
+
+---
+
+## How a manga gets made
+
+You upload a video in the studio, and it runs one job end to end.
+
+```
+Video + optional prompt
+  │
+  ▼  Python ingest (run_ingest.py, called by src/lib/ingest/python-ingest-bridge.ts)
+  1  Plan & chunk ............ gemini-4-carbon + FFmpeg
+  2  Scout beats ............. gemini-4-hydrogen (gemini-4-argon on long chunks)
+  3  Rank beats .............. gemini-decision-1 (action × story casting grid)
+  3.5 Handoff ................ outputs/<job_id>/handoff.json (clips, keyframes, burst frames)
+  │
+  ▼  Studio pipeline (src/lib/jobs/job-manager.ts)
+  0  Reference style profile . gemini-4-carbon (only if data/manga_refs/ has chapters)
+  1  Clip understanding ...... gemini-4-argon
+  2  Narrative plan .......... gemini-4-neon
+  3  Storyboard .............. gemini-4-carbon
+  4  Illustration ............ gemini-nano-banana-2.1 redraws each real frame (local ink filter as fallback)
+  5  Page composition ........ local (sharp)
+  6  Validation .............. local checks (gemini-4-hydrogen QA if MANGA_ENABLE_AI_QA=true)
+  │
+  ▼
+Interactive reader: click any panel to play the source clip at that moment
+```
+
+Every panel starts from a real frame of your video. The art can take creative liberties, but the plays, scores and order come from the footage.
+
+---
+
+## Setup
+
+You need Node 20+, Python 3.10+, `ffmpeg` on your `PATH`, and a Gemini API key.
+
+```bash
+# 1. Studio (repo root)
+npm install
+
+# 2. Python ingest pipeline
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+
+# 3. API key (gitignored; the studio passes it on to Python)
+echo "GEMINI_API_KEY=your_key_here" > .env.local
+
+# 4. Landing page
+cd web && npm install
+```
+
+> Use plain `npm install`. Don't run `npm audit fix --force`: it upgrades to zod 4 / Next 16, which breaks the Gemini response schemas.
+
+## Running
+
+```bash
+npm run dev              # studio → http://localhost:3000/studio
+cd web && npm run dev    # landing page (second terminal)
+```
+
+In the studio: upload a short clip (a few seconds up to about a minute works best), add an optional prompt, pick an art style and page count, then **Generate**. The screens are **1. Manga Studio → 2. Pipeline Status → 3. Interactive Reader**. If a stage fails, earlier stages are cached, so **Resume** picks up where it stopped.
+
+The landing page's **Try the demo** button opens the studio. Point it somewhere else with `VITE_DEMO_URL` in `web/.env.local`.
+
+## Testing
+
+```bash
+npm test                                   # studio test suite (vitest)
+npx tsc --noEmit                           # studio type-check
+npm run build                              # studio production build
+.venv/bin/python run_ingest.py --dry-run-synthetic   # Python pipeline offline smoke test (no API key)
+cd web && npm run build                    # landing page type-check + build
+```
+
+---
+
+## Configuration
+
+Set these in `.env.local`. Only `GEMINI_API_KEY` is required.
+
+| Variable | Default | What it does |
 | --- | --- | --- |
-| Manga studio app (end-to-end clip → manga, TypeScript) | repo root (`src/`) | `npm install && npm run dev` → http://localhost:3000/studio |
-| Upstream ingest pipeline (Stages 1 → 3.5, Python) | `pipeline/`, `media/`, `schemas/`, `run_ingest.py` | `python run_ingest.py --dry-run-synthetic` |
-| Landing page | `web/` | `cd web && npm install && npm run dev` |
+| `GEMINI_API_KEY` | none | Required for generation (`GOOGLE_API_KEY` also works) |
+| `GEMINI_MODEL_ARGON` / `_CARBON` / `_HYDROGEN` / `_NEON` | `gemini-4-*` | Override a role's model (only Gemini 4 models are allowed) |
+| `GEMINI_IMAGE_MODEL` | `gemini-nano-banana-2.1` | Model that redraws frames as manga |
+| `MANGA_DISABLE_NANO_BANANA` | off | `true` uses only the local ink filter (faster, no image API calls) |
+| `MANGA_ENABLE_AI_QA` | off | `true` adds a `gemini-4-hydrogen` quality pass |
+| `MANGA_ENABLE_CARBON_SPEC_PASS` | off | `true` forces the extra Carbon illustration-spec pass |
+| `MANGA_IMAGE_CONCURRENCY` / `MANGA_CLIP_CONCURRENCY` | built-in | Parallel image / clip calls |
+| `MANGA_DATA_DIR` | `data/` | Where clips, jobs, panels and pages are stored |
+| `MANGA_REFERENCES_DIR` | `data/manga_refs/` | Optional reference chapters for Stage 0 |
+| `FFMPEG_PATH` / `FFPROBE_PATH` | bundled / `PATH` | Custom FFmpeg binaries |
+| `VITE_DEMO_URL` (in `web/.env.local`) | `http://localhost:3000/studio` | Where the landing page CTA points |
 
 ---
 
-## Manga Studio App
+## Python pipeline on its own
 
+The studio runs `run_ingest.py` for you, but you can run it directly to inspect `handoff.json`:
 
-An end-to-end reference-guided basketball highlight-to-manga storytelling studio, illustration engine, and interactive reader built exclusively on **Google's Gemini 4 model family** (`gemini-4-carbon`, `gemini-4-argon`, `gemini-4-hydrogen`, and `gemini-4-neon`) with Next.js 15, TypeScript, Tailwind CSS, FFmpeg, Sharp, and Zod.
+```bash
+.venv/bin/python run_ingest.py --video data/clip.mp4 --focus "Follow #23 in the 4th" --job-id demo
+.venv/bin/python run_ingest.py --video data/clip.mp4 --job-id demo --pool-size 14   # re-rank from cache
+```
 
----
-
-## 1. System Overview & Updated Pipeline Order
-
-**COURT & INK** studies developer-supplied basketball manga chapters in `data/manga_refs/` before analyzing basketball highlight clips, applying learned anime/manga visual storytelling principles to create original, interactive basketball manga stories:
-
-- **Stage 0 — Manga Visual Reference Analysis (`gemini-4-carbon`)**: Scans `data/manga_refs/`, extracts & normalizes pages/panels, visually analyzes character proportions, G-pen/brush linework, screentones, basketball action framing, layouts, narrative pacing, and anime visual language, and caches the resulting profile to `data/manga_style_profile.json` and `data/manga_reference_index.json` keyed by a SHA-256 content fingerprint.
-- **Stage 1 — Basketball Clip Understanding (`gemini-4-argon`)**: Multimodal inspection of uploaded basketball clips & FFmpeg keyframes to extract verified actions, players, jersey numbers, shot outcomes, and timestamps.
-- **Stage 2 — Narrative Planning (`gemini-4-carbon`)**: Builds a chronologically accurate 5-stage sports manga arc (`introduction` → `rising_action` → `conflict` → `climax` → `resolution`).
-- **Stage 3 — Reference-Guided Storyboarding (`gemini-4-carbon`)**: Combines clip analyses, narrative arc, the `basketball-manga` skill, `MangaVisualStyleProfile`, and retrieved event-specific reference guidance into a validated multi-page storyboard.
-- **Stage 4 — Reference-Guided Illustration (`gemini-4-carbon` + Local Hybrid/SVG Engine)**: Generates per-panel `CarbonIllustrationSpec` directives + sanitized `<svg>` action overlays and renders high-resolution PNG panels honoring the selected preset and independent art controls.
-- **Stage 5 — Deterministic Page Composition**: Arranges panels into non-overlapping Right-to-Left (`rtl`) or Left-to-Right (`ltr`) pages with print PNG export.
-- **Stage 6 — Quality & Originality Validation (`gemini-4-hydrogen`)**: Evaluates style profile alignment, anime expressiveness, artwork originality (never copying reference characters), and factual basketball accuracy, regenerating individual failing panels when needed.
-- **Stage 7 — Interactive Manga Reader**: Click any manga panel to watch the original basketball highlight seeked to its exact timestamp.
+Output lands in `outputs/<job_id>/`. `pipeline/handoff.py` exposes `build_storyline_model_input(handoff, mode=...)` with the modes `keyframes_only`, `burst_frames`, `video_clips` and `hybrid`.
 
 ---
 
-## 2. Organizing Reference Manga Chapters (`data/manga_refs/`)
-
-Reference chapters are developer-maintained local assets (there is intentionally no frontend reference uploader). Place your *Kuroko's Basketball* or other basketball manga chapters directly inside `data/manga_refs/`:
+## Repo layout
 
 ```text
-data/manga_refs/
-├── Kuroko_No_Basket_136/
-│   ├── kuroko_no_basket_136_1.jpg
-│   ├── kuroko_no_basket_136_2.jpg
-│   └── ...
-├── Kuroko_No_Basket_152/
-│   └── ...
-├── Kuroko_No_Basket_274/
-│   └── ...
-└── chapter_04/
-    └── chapter_04.zip   # or .pdf / .cbz / image files
+src/app/            Next.js pages (/studio, /reader, /storyboard → /reader) + API routes
+src/components/     Studio UI: uploader, pipeline progress, reader, panels
+src/lib/ai/         Gemini agents: clip understanding, director, illustrator, Nano Banana, QA
+src/lib/ingest/     Bridge that runs run_ingest.py and loads handoff.json
+src/lib/jobs/       End-to-end job manager (stages, checkpoints, resume)
+src/lib/manga/      Layout engine, renderers, validators, reference analysis
+pipeline/ media/ schemas/ run_ingest.py   Python ingest (plan → scout → rank → handoff)
+tests/              Vitest suites (pipeline, Python handoff bridge, references, storyboard plan)
+web/                Landing page (hero, workflow, "every panel traces back", closing)
+.agents/skills/basketball-manga/          Manga storytelling skill the director loads
+data/ outputs/      Gitignored: uploads, frames, generated manga
 ```
-
-### Supported Reference Formats & Caching Rules
-- **Supported files**: `.png`, `.jpg`, `.jpeg`, `.webp`, `.pdf`, `.zip`, `.cbz`.
-- **Ordering**: Chapters and pages are sorted using natural numeric order (`_1.jpg` → `_2.jpg` → `_10.jpg`).
-- **Automatic SHA-256 Caching**: If no files in `data/manga_refs/` have changed, subsequent manga generation jobs reuse `data/manga_style_profile.json` and `data/manga_reference_index.json` immediately without re-analyzing the chapters. Adding, modifying, or removing any file automatically invalidates the cache and triggers a fresh Stage 0 analysis.
-- **Empty Directory Fallback**: If `data/manga_refs/` has no chapters yet, Stage 0 logs a non-blocking warning and uses the built-in `.agents/skills/basketball-manga` guidelines without fabricating reference observations.
-- **Copyright Safety**: `.gitignore` excludes `data/` (including `data/manga_refs/` and internal reference crops) from git commits, and `/api/media` blocks public serving of `manga_refs` and `reference_cache`.
 
 ---
 
-## 3. Master Art Style Presets & Independent Controls
+## Media and rights
 
-### Three Master Presets
-1. **Hyperkinetic Shonen Anime (`hyperkinetic_shonen_anime` — Default)**: High-energy anime-inspired basketball art with expressive focus highlights, dynamic foreshortening, bold brush shadows, kinetic motion ribbons, and explosive radial bursts.
-2. **Authentic Sports Manga (`authentic_sports_manga`)**: Traditional black-and-white basketball manga with crisp G-pen contours, 45° halftone screentones, and grounded athletic anatomy.
-3. **Cinematic Anime Drama (`cinematic_anime_drama`)**: Refined cel shading, clean fine contours, negative space, atmospheric lighting, and suspenseful framing.
-
-### Four Independent Art Controls
-- **Color Treatment**: `Traditional Monochrome`, `Full Anime Color` (quantized multi-band RGB cel shading + ink contours), or `Monochrome with Selective Color` (preserves vivid basketball orange, rim iron, and crimson jersey accents).
-- **Action Intensity**: `Grounded`, `Dramatic`, or `Explosive`.
-- **Reference Influence**: `Light`, `Balanced`, or `Strong`.
-- **Storytelling Focus**: `Action Focused`, `Balanced`, or `Emotion Focused`.
-
----
-
-## 4. Setup, Running & Testing
-
-```bash
-npm install
-cp .env.example .env.local   # Add your GEMINI_API_KEY
-npm run dev                  # Launch at http://localhost:3000
-```
-
-Run the automated test suites, TypeScript compiler, and production build:
-
-```bash
-npm test
-npx tsc --noEmit
-npm run build
-```
-
-
----
-
-## Upstream Ingest Pipeline (Python)
-
-
-See [AGENTS.md](AGENTS.md) for the full project architecture, Gemini 4 + Decisions API standards, and canonical JSON contracts.
-
-## Quick Setup
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-Copy-Item .env.example .env
-# Add GEMINI_API_KEY=... to .env
-```
-
-> `ffmpeg` on `PATH` is used automatically if installed; otherwise `imageio-ffmpeg` provides a bundled `ffmpeg` binary out of the box.
-
----
-
-## Upstream Pipeline (Stages 1 → 3.5: Raw Video → `handoff.json`)
-
-`run_ingest.py` runs everything from raw basketball video + `user_focus` up to **right before the final storyline model**:
-
-1. **Stage 1 (`pipeline/planner.py` + `media/chunker.py`):** Uses `gemini-4-carbon` to parse `user_focus` into a `GamePlan` + adaptive scoring weights, then cuts overlapping video chunks.
-2. **Stage 2 (`pipeline/scout.py`):** Runs `gemini-4-hydrogen` (or `gemini-4-argon` with Agentic Video Understanding on >5 min chunks) concurrently across chunks to extract segment summaries + **both `action` and `story_emotion` beats** + verbatim quotes, and deduplicates overlap boundaries.
-3. **Stage 3 (`pipeline/ranker.py` + `media/frames.py`):** Extracts the sharpest keyframe around each `peak_sec`, scores all candidates concurrently with `gemini-decision-1` (`v1beta`) across 4 calibrated axes (`action_spectacle`, `narrative_leverage`, `user_focus_match`, `visual_clarity`), applies the **2×2 Manga Casting Matrix**, and selects a chronologically ordered balanced storyline pool.
-4. **Stage 3.5 (`pipeline/handoff.py`):** Cuts short frame-accurate `.mp4` clips + multi-frame burst strips for the selected pool and writes `outputs/<job_id>/handoff.json` (`DirectorHandoffPackage`).
-
-### Run Commands
-
-```powershell
-# 1. Offline smoke test (no API key needed — verifies FFmpeg, OpenCV sharpness, dedup, 2x2 ranking & handoff)
-python run_ingest.py --dry-run-synthetic
-
-# 2. Live run on a basketball clip
-python run_ingest.py --video data/game_q4.mp4 --focus "Follow #23 in the 4th quarter comeback" --job-id q4_demo
-
-# 3. Full-game 4-quarter mode with Gemini 4 Argon Agentic Video Understanding
-python run_ingest.py --video data/full_game.mp4 --quarters --scout-model gemini-4-argon --agentic --focus "Focus on the second-half comeback"
-
-# 4. Iterate on pool size / handoff mode instantly from cached Stage 2 & 3 outputs (zero video re-upload)
-python run_ingest.py --video data/game_q4.mp4 --job-id q4_demo --pool-size 14 --preview-handoff-mode video_clips
-```
-
-### Iterating on How Candidates Are Presented to the Final Storyline Model
-
-Load `outputs/<job_id>/handoff.json` and call `build_storyline_model_input(handoff, mode=...)` from `pipeline/handoff.py` to test 4 presentation modes without re-running Stages 1–3:
-
-- `keyframes_only` — 1 sharp JPEG per beat (fastest)
-- `burst_frames` — 4-frame chronological strip per beat (frame choice without video upload overhead)
-- `video_clips` — trimmed `.mp4` clip per beat (full motion + commentary audio)
-- `hybrid` *(default)* — `.mp4` clips for `climax_candidate` beats + sharp keyframes for tension/setup beats
+- Never commit video, broadcast frames or generated NBA/NCAA panels. `data/`, `outputs/`, `*.mp4` and `web/public/landing-media/` are gitignored.
+- Reference chapters in `data/manga_refs/` stay local, and the media API refuses to serve them. Don't use published manga in anything shown publicly.
+- The landing page's media files are listed in [web/public/landing-media/README.md](web/public/landing-media/README.md). Every slot shows a placeholder until you add the file.
